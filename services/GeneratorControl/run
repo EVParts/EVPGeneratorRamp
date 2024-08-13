@@ -1,4 +1,4 @@
 #!/bin/sh
 echo "*** starting GeneratorControl ***"
 exec 2>&1
-exec /data/EVPGeneratorControl/generator_control.py
+exec /data/EVP15KVAGeneratorControl/generator_control.py
