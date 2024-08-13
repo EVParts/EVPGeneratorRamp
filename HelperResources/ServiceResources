@@ -180,6 +180,8 @@ removeService ()
 
 installService ()
 {
+  echo "### Installing $serviceName from $servicePath to $serviceDir"
+
 	# don't do any work if install has already failed
 	if $installFailed; then
 		return
