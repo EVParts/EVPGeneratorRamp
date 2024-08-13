@@ -1,0 +1,47 @@
+#!/bin/sh
+
+# this script sources helper Resources into the setup script
+#
+# for backward compatibility, CommonResources in the SetupHelper directory
+#	links to this file, not CommonResources
+#	CommonResources previously sourced the other files
+#	now sourcing all resource files is done from here
+#
+# only the helper files located is the SetupHelper directory are used
+#	previous versions chose between this and a helper file set in the package directory
+#	but changes in SetupHelper to use a local copy of patch made this not possible
+#
+# this script should be sourced in the setup script before any other activities
+
+pkgDir="$( cd "$(dirname $0)" >/dev/null 2>&1 ; /bin/pwd -P )"
+pkgRoot="$( dirname "$pkgDir")"
+pkgName=$( basename $pkgDir )
+helperResourcesDir="$pkgRoot/SetupHelper/HelperResources"
+logDir="/var/log/PackageManager"
+logFile="$logDir/current"
+
+if ! [ -e "$helperResourcesDir" ]; then
+	echo "$pkgName: helper files not found - can't continue" | tee -a "/data/log/SetupHelper"
+	exit 1
+fi
+
+# if we get here, helper files were located - source the files
+helperFileList=( EssentialResources ServiceResources DbusSettingsResources )
+for file in ${helperFileList[@]}; do
+	if [ -f "$helperResourcesDir/$file" ]; then
+		source "$helperResourcesDir/$file"
+	else
+		echo "$pkgName: helper file $file not found - can't continue" | tee -a "$logFile"
+		exit 1
+	fi
+done
+
+# now transfer control to CommonResoures - it may not return !
+if [ -f "$helperResourcesDir/CommonResources" ]; then
+	source "$helperResourcesDir/CommonResources"
+else
+	echo "$pkgName: helper file CommonResources not found - can't continue" | tee -a "$logFile"
+	exit 1
+fi
+
+

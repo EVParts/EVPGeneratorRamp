@@ -1,0 +1,53 @@
+#!/bin/bash
+
+# this script installs GeneratorControl v3.0 following SetupHelper rules (https://github.com/kwindrem/SetupHelper)
+#
+# this script will accept the following commands on the command line:
+#	setup install
+#	setup uninstall
+
+packageLogFile="/var/log/GeneratorControl/current"
+
+#### following lines incorporate helper resources into this script
+pkgDir=$( dirname $0 )
+pkgName=$( basename $pkgDir )
+pkgRoot=$( dirname $pkgDir )
+if [ -e "$pkgDir/HelperResources/IncludeHelpers" ]; then
+	source "$pkgDir/HelperResources/IncludeHelpers"
+elif [ -e "$pkgRoot/SetupHelper/HelperResources/IncludeHelpers" ]; then
+	source "$pkgRoot/SetupHelper/HelperResources/IncludeHelpers"
+else
+	echo "$pkgName: helper files not found - can't continue" | tee -a "/data/log/SetupHelper"
+	exit 1
+fi
+#### end of lines to include helper resources
+
+# GitHub account info - fill in as appropriate
+# to include this package in SetupHelper automatic updates
+
+#TODO
+#packageGitHubUser="seneda" # Not sure about this yet
+#packageGitHubBranch="main"
+
+#### running manually and OK to proceed - prompt for input
+if [ $scriptAction == 'NONE' ] ; then
+	echo
+	echo "GeneratorControl will add support for reading switches and"
+	echo "controlling relays through the DTWonder Relay Module"
+	echo
+	standardActionPrompt
+fi
+
+#### here to do the actual work
+
+if [ $scriptAction == 'INSTALL' ] ; then
+	logMessage "++ Installing GeneratorControl"
+	logMessage "++ $packageName installed"
+fi
+
+# #### uninstalling - check scriptAction again
+# if an install step failed package needs to be removed
+if [ $scriptAction == 'UNINSTALL' ] ; then
+    logMessage "++ Uninstalling RemoteGPIO"
+    logMessage "++ $packageName uninstalled"
+fi

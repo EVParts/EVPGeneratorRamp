@@ -10,6 +10,11 @@ sys.path.insert(1, os.path.join(os.path.dirname(__file__), 'velib_python'))
 
 from vedbus import VeDbusItemImport
 
+import logging
+#logging.basicConfig( level=logging.DEBUG )
+logger=logging.getLogger("generator_control")
+logger.setLevel(logging.INFO)
+
 softwareVersion = '1.0'
 
 INV_SWITCH_OFF = 4
@@ -196,6 +201,7 @@ class GeneratorController():
             self.set_outputs()
             self.set_inverter_switch_mode()
             print(f"{time():.2f}s : {self}")
+            logger.info(self)
             sleep(TIMESTEP)
 
     def __repr__(self):
