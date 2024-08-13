@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-
+import datetime
 import os
 import sys
 from time import time, sleep
@@ -12,10 +12,9 @@ sys.path.insert(1, os.path.join(os.path.dirname(__file__), 'velib_python'))
 
 from vedbus import VeDbusItemImport
 
-import logging
+from logger import setup_logging
 #logging.basicConfig( level=logging.DEBUG )
-logger=logging.getLogger("generator_control")
-logger.setLevel(logging.INFO)
+logger=setup_logging(name="generator_control")
 
 softwareVersion = '1.0'
 
@@ -26,7 +25,7 @@ INV_SWITCH_CHARGE_ONLY = 1
 
 REVERSE_POWER_THRESHOLD = -100  # Watts
 
-TIMESTEP = 1.0
+TIMESTEP = 0.25
 REVERSE_POWER_COUNTER_THRESHOLD = 10 / TIMESTEP  # 10s
 
 
@@ -194,7 +193,6 @@ class GeneratorController():
         DBusGMainLoop(set_as_default=True)
         self.dbusConn = dbus.SessionBus() if 'DBUS_SESSION_BUS_ADDRESS' in os.environ else dbus.SystemBus()
 
-        t0 = time()
         while True:
             self.update_mode()
             self.update_battery_soc()
@@ -202,7 +200,7 @@ class GeneratorController():
             self.check_reverse_power()
             self.set_outputs()
             self.set_inverter_switch_mode()
-            print(f"{time():.2f}s : {self}")
+            # print(f"{datetime.isoformat(datetime.now())} : {self}")
             logger.info(self)
             sleep(TIMESTEP)
 
@@ -215,7 +213,12 @@ class GeneratorController():
                          f"Reverse Power {self.Reverse_Power_Counter * TIMESTEP}s",
                          f"Off LED {self.Off_LED}",
                          f"On LED {self.On_LED}",
-                         f"Charge LED {self.Charge_LED}"])
+                         f"Charge LED {self.Charge_LED}"],
+                         f"BMS Wake {self.BMS_Wake}",
+                         f"DSE Start {self.DSE_Remote_Start}",
+                         f"DSE Mode {self.DSE_Mode_Request}",
+                        )
+
 
 
 if __name__ == "__main__":
