@@ -51,3 +51,8 @@ if [ $scriptAction == 'UNINSTALL' ] ; then
     logMessage "++ Uninstalling RemoteGPIO"
     logMessage "++ $packageName uninstalled"
 fi
+
+logMessage "completed"
+
+# thats all folks - SCRIPT EXITS INSIDE THE FUNCTION
+endScript INSTALL_FILES ADD_DBUS_SETTINGS INSTALL_SERVICES
