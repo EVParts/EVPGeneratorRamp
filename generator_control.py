@@ -213,10 +213,11 @@ class GeneratorController():
                          f"Reverse Power {self.Reverse_Power_Counter * TIMESTEP}s",
                          f"Off LED {self.Off_LED}",
                          f"On LED {self.On_LED}",
-                         f"Charge LED {self.Charge_LED}"],
+                         f"Charge LED {self.Charge_LED}",
                          f"BMS Wake {self.BMS_Wake}",
                          f"DSE Start {self.DSE_Remote_Start}",
                          f"DSE Mode {self.DSE_Mode_Request}",
+                         ]
                         )
 
 
