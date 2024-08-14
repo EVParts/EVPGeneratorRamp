@@ -138,7 +138,7 @@ class GeneratorController():
     def get_dbus_value(self, serviceName, path):
         try:
             dbus_item = VeDbusItemImport(self.dbusConn, serviceName, path)
-            val = dbus_item.get_value()
+            return dbus_item.get_value()
         except dbus.exceptions.DBusException as e:
             print(f"Could not get DBUS Item : {serviceName} - {path}")
             print(e)
@@ -147,7 +147,7 @@ class GeneratorController():
     def set_dbus_value(self, serviceName, path, value):
         try:
             dbus_item = VeDbusItemImport(self.dbusConn, serviceName, path)
-            val = dbus_item.set_value(value)
+            dbus_item.set_value(value)
         except dbus.exceptions.DBusException as e:
             print(f"Could not set DBUS Item : {serviceName} - {path}")
             print(e)
