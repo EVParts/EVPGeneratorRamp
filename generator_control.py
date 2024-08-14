@@ -135,9 +135,17 @@ class GeneratorController():
         else:
             pass  # Leave mode unchanged
 
+    def get_dbus_value(self, serviceName, path):
+        try:
+            dbus_item = VeDbusItemImport(self.dbusConn, serviceName, path)
+            val = dbus_item.get_value()
+        except dbus.exceptions.DBusException as e:
+            print(f"Could not get DBUS Item : {serviceName} - {path}")
+            print(e)
+            return None
+
     def update_battery_soc(self):
-        dbus_item = VeDbusItemImport(self.dbusConn, "com.victronenergy.system", "/Dc/Battery/Soc")
-        val = dbus_item.get_value()
+        val = self.get_dbus_value("com.victronenergy.system", "/Dc/Battery/Soc")
         if val:
             self.Battery_SOC = val
         else:
@@ -145,8 +153,7 @@ class GeneratorController():
             self.Battery_SOC = 0
 
     def update_ac_output_power(self):
-        dbus_item = VeDbusItemImport(self.dbusConn, "com.victronenergy.vebus.ttyS2", "/Ac/Out/L1/P")
-        val = dbus_item.get_value()
+        val = self.get_dbus_value("com.victronenergy.vebus.ttyS2", "/Ac/Out/L1/P")
         if val:
             self.AC_Output_Power = val
         else:
