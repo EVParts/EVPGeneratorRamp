@@ -135,7 +135,7 @@ class GeneratorController():
         else:
             pass  # Leave mode unchanged
 
-    def set_dbus_value(self, serviceName, path):
+    def get_dbus_value(self, serviceName, path):
         try:
             dbus_item = VeDbusItemImport(self.dbusConn, serviceName, path)
             val = dbus_item.get_value()
@@ -144,10 +144,10 @@ class GeneratorController():
             print(e)
             return None
 
-    def get_dbus_value(self, serviceName, path, value):
+    def set_dbus_value(self, serviceName, path, value):
         try:
             dbus_item = VeDbusItemImport(self.dbusConn, serviceName, path)
-            val = dbus_item.set_value()
+            val = dbus_item.set_value(value)
         except dbus.exceptions.DBusException as e:
             print(f"Could not set DBUS Item : {serviceName} - {path}")
             print(e)
@@ -170,14 +170,14 @@ class GeneratorController():
             self.AC_Output_Power = 0
 
     def set_outputs(self):
-        self.set_dbus_value("com.victron.system", "/Relay/2/State", self.Off_LED)
-        self.set_dbus_value("com.victron.system", "/Relay/3/State", self.On_LED)
-        self.set_dbus_value("com.victron.system", "/Relay/4/State", self.Charge_LED)
-        self.set_dbus_value("com.victron.system", "/Relay/5/State", self.BMS_Wake)
-        self.set_dbus_value("com.victron.system", "/Relay/6/State", self.DSE_Remote_Start)
-        self.set_dbus_value("com.victron.system", "/Relay/7/State", self.DSE_Mode_Request)
-        self.set_dbus_value("com.victron.system", "/Relay/8/State", self.RCD_Reset_Switch)
-        self.set_dbus_value("com.victron.system", "/Relay/9/State", self.Reverse_Power_Alarm)
+        self.set_dbus_value("com.victronenergy.system", "/Relay/2/State", self.Off_LED)
+        self.set_dbus_value("com.victronenergy.system", "/Relay/3/State", self.On_LED)
+        self.set_dbus_value("com.victronenergy.system", "/Relay/4/State", self.Charge_LED)
+        self.set_dbus_value("com.victronenergy.system", "/Relay/5/State", self.BMS_Wake)
+        self.set_dbus_value("com.victronenergy.system", "/Relay/6/State", self.DSE_Remote_Start)
+        self.set_dbus_value("com.victronenergy.system", "/Relay/7/State", self.DSE_Mode_Request)
+        self.set_dbus_value("com.victronenergy.system", "/Relay/8/State", self.RCD_Reset_Switch)
+        self.set_dbus_value("com.victronenergy.system", "/Relay/9/State", self.Reverse_Power_Alarm)
 
 
     def set_inverter_switch_mode(self):
