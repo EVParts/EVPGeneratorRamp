@@ -108,7 +108,7 @@ class GeneratorController():
         return ((self.Mode == "On") or (self.Mode == "ChargeOnly"))
 
     @property
-    def RCD_Test_Switch(self):
+    def RCD_Reset_Switch(self):
         # If all 3 buttons held down then trigger RCD reset relay
         return ((self.Off_Button_Pressed) and (self.On_Button_Pressed) and (self.Charge_Button_Pressed))
 
@@ -135,12 +135,21 @@ class GeneratorController():
         else:
             pass  # Leave mode unchanged
 
-    def get_dbus_value(self, serviceName, path):
+    def set_dbus_value(self, serviceName, path):
         try:
             dbus_item = VeDbusItemImport(self.dbusConn, serviceName, path)
             val = dbus_item.get_value()
         except dbus.exceptions.DBusException as e:
             print(f"Could not get DBUS Item : {serviceName} - {path}")
+            print(e)
+            return None
+
+    def get_dbus_value(self, serviceName, path, value):
+        try:
+            dbus_item = VeDbusItemImport(self.dbusConn, serviceName, path)
+            val = dbus_item.set_value()
+        except dbus.exceptions.DBusException as e:
+            print(f"Could not set DBUS Item : {serviceName} - {path}")
             print(e)
             return None
 
@@ -161,27 +170,18 @@ class GeneratorController():
             self.AC_Output_Power = 0
 
     def set_outputs(self):
-        off_LED_relay = VeDbusItemImport(self.dbusConn, "com.victronenergy.system", "/Relay/2/State")
-        normal_LED_relay = VeDbusItemImport(self.dbusConn, "com.victronenergy.system", "/Relay/3/State")
-        charge_LED_relay = VeDbusItemImport(self.dbusConn, "com.victronenergy.system", "/Relay/4/State")
-        BMSWake_relay = VeDbusItemImport(self.dbusConn, "com.victronenergy.system", "/Relay/5/State")
-        DSERemoteStart_relay = VeDbusItemImport(self.dbusConn, "com.victronenergy.system", "/Relay/6/State")
-        DSEModeRequest_relay = VeDbusItemImport(self.dbusConn, "com.victronenergy.system", "/Relay/7/State")
-        RCD_Reset_Switch_relay = VeDbusItemImport(self.dbusConn, "com.victronenergy.system", "/Relay/8/State")
-        ReversePowerAlarm_relay = VeDbusItemImport(self.dbusConn, "com.victronenergy.system", "/Relay/9/State")
+        self.set_dbus_value("com.victron.system", "/Relay/2/State", self.Off_LED)
+        self.set_dbus_value("com.victron.system", "/Relay/3/State", self.On_LED)
+        self.set_dbus_value("com.victron.system", "/Relay/4/State", self.Charge_LED)
+        self.set_dbus_value("com.victron.system", "/Relay/5/State", self.BMS_Wake)
+        self.set_dbus_value("com.victron.system", "/Relay/6/State", self.DSE_Remote_Start)
+        self.set_dbus_value("com.victron.system", "/Relay/7/State", self.DSE_Mode_Request)
+        self.set_dbus_value("com.victron.system", "/Relay/8/State", self.RCD_Reset_Switch)
+        self.set_dbus_value("com.victron.system", "/Relay/9/State", self.Reverse_Power_Alarm)
 
-        off_LED_relay.set_value(self.Off_LED)
-        normal_LED_relay.set_value(self.On_LED)
-        charge_LED_relay.set_value(self.Charge_LED)
-        BMSWake_relay.set_value(self.BMS_Wake)
-        DSERemoteStart_relay.set_value(self.DSE_Remote_Start)
-        DSEModeRequest_relay.set_value(self.DSE_Mode_Request)
-        RCD_Reset_Switch_relay.set_value(self.RCD_Test_Switch)
-        ReversePowerAlarm_relay.set_value(self.Reverse_Power_Alarm)
 
     def set_inverter_switch_mode(self):
-        inverter_switch_mode = VeDbusItemImport(self.dbusConn, "com.victronenergy.vebus.ttyS2", "/Mode")
-        inverter_switch_mode.set_value(self.Inverter_Switch_Mode)
+        self.set_dbus_value( "com.victronenergy.vebus.ttyS2", "/Mode", self.Inverter_Switch_Mode)
 
     def check_reverse_power(self):
         if self.Reverse_Power_Detected:
