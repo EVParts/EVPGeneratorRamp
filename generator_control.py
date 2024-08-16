@@ -31,12 +31,27 @@ REVERSE_POWER_COUNTER_THRESHOLD = 10 / TIMESTEP  # 10s
 
 class GeneratorController():
     def __init__(self):
-        self.dbusConn = None
+        DBusGMainLoop(set_as_default=True)
+        self.dbusConn = dbus.SessionBus() if 'DBUS_SESSION_BUS_ADDRESS' in os.environ else dbus.SystemBus()
         self.Mode = "Off"
         self.Battery_SOC = 0
         self.AC_Output_Power = 0
         self.Reverse_Power_Counter = 0
         self.Reverse_Power_Alarm = False
+
+        self._dbus_battery_soc = VeDbusItemImport(self.dbusConn, "com.victronenergy.system", "/Dc/Battery/Soc")
+        self._dbus_ac_output_power = VeDbusItemImport(self.dbusConn, "com.victronenergy.vebus.ttyS2", "/Ac/Out/L1/P")
+        self._dbus_inverter_switch = VeDbusItemImport(self.dbusConn, "com.victronenergy.vebus.ttyS2", "/Mode")
+
+        self._dbus_relay_2 = VeDbusItemImport(self.dbusConn, "com.victronenergy.system", "/Relay/2/State")
+        self._dbus_relay_3 = VeDbusItemImport(self.dbusConn, "com.victronenergy.system", "/Relay/3/State")
+        self._dbus_relay_4 = VeDbusItemImport(self.dbusConn, "com.victronenergy.system", "/Relay/4/State")
+        self._dbus_relay_5 = VeDbusItemImport(self.dbusConn, "com.victronenergy.system", "/Relay/5/State")
+        self._dbus_relay_6 = VeDbusItemImport(self.dbusConn, "com.victronenergy.system", "/Relay/6/State")
+        self._dbus_relay_7 = VeDbusItemImport(self.dbusConn, "com.victronenergy.system", "/Relay/7/State")
+        self._dbus_relay_8 = VeDbusItemImport(self.dbusConn, "com.victronenergy.system", "/Relay/8/State")
+        self._dbus_relay_9 = VeDbusItemImport(self.dbusConn, "com.victronenergy.system", "/Relay/9/State")
+
 
     @property
     def Off_Button_Pressed(self):
@@ -109,7 +124,12 @@ class GeneratorController():
 
     @property
     def RCD_Reset_Switch(self):
-        # If all 3 buttons held down then trigger RCD reset relay
+        # If on and off buttons held down then trigger RCD reset relay
+        return ((self.Off_Button_Pressed) and (self.On_Button_Pressed))
+
+    @property
+    def Service_Restart_Requested(self):
+        # If all 3 buttons held down then trigger script reset
         return ((self.Off_Button_Pressed) and (self.On_Button_Pressed) and (self.Charge_Button_Pressed))
 
 
@@ -126,6 +146,7 @@ class GeneratorController():
         return self.AC_Output_Power < REVERSE_POWER_THRESHOLD
 
     def update_mode(self):
+        _last_mode = self.Mode
         if self.Off_Button_Pressed:
             self.Mode = "Off"
         elif self.On_Button_Pressed:
@@ -135,26 +156,29 @@ class GeneratorController():
         else:
             pass  # Leave mode unchanged
 
-    def get_dbus_value(self, serviceName, path):
+        if (_last_mode != "Off") and (self.Mode != "Off"):
+            print(self)
+
+    def get_dbus_value(self, dbus_item : VeDbusItemImport):
+        # print(f"Get DBus Value () : {dbus_item.serviceName} - {dbus_item.path}")
         try:
-            dbus_item = VeDbusItemImport(self.dbusConn, serviceName, path)
             return dbus_item.get_value()
         except dbus.exceptions.DBusException as e:
-            print(f"Could not get DBUS Item : {serviceName} - {path}")
+            print(f"Could not get DBUS Item : {dbus_item.serviceName} - {dbus_item.path}")
             print(e)
             return None
 
-    def set_dbus_value(self, serviceName, path, value):
+    def set_dbus_value(self, dbus_item : VeDbusItemImport, value):
+        # print(f"Set DBus Value () : {dbus_item.serviceName} - {dbus_item.path} : {Value}")
         try:
-            dbus_item = VeDbusItemImport(self.dbusConn, serviceName, path)
             dbus_item.set_value(value)
         except dbus.exceptions.DBusException as e:
-            print(f"Could not set DBUS Item : {serviceName} - {path}")
+            print(f"Could not set DBUS Item : {dbus_item.serviceName} - {dbus_item.path} : {value}")
             print(e)
             return None
 
     def update_battery_soc(self):
-        val = self.get_dbus_value("com.victronenergy.system", "/Dc/Battery/Soc")
+        val = self.get_dbus_value(self._dbus_battery_soc)
         if val:
             self.Battery_SOC = val
         else:
@@ -162,7 +186,7 @@ class GeneratorController():
             self.Battery_SOC = 0
 
     def update_ac_output_power(self):
-        val = self.get_dbus_value("com.victronenergy.vebus.ttyS2", "/Ac/Out/L1/P")
+        val = self.get_dbus_value(self._dbus_ac_output_power)
         if val:
             self.AC_Output_Power = val
         else:
@@ -170,18 +194,18 @@ class GeneratorController():
             self.AC_Output_Power = 0
 
     def set_outputs(self):
-        self.set_dbus_value("com.victronenergy.system", "/Relay/2/State", self.Off_LED)
-        self.set_dbus_value("com.victronenergy.system", "/Relay/3/State", self.On_LED)
-        self.set_dbus_value("com.victronenergy.system", "/Relay/4/State", self.Charge_LED)
-        self.set_dbus_value("com.victronenergy.system", "/Relay/5/State", self.BMS_Wake)
-        self.set_dbus_value("com.victronenergy.system", "/Relay/6/State", self.DSE_Remote_Start)
-        self.set_dbus_value("com.victronenergy.system", "/Relay/7/State", self.DSE_Mode_Request)
-        self.set_dbus_value("com.victronenergy.system", "/Relay/8/State", self.RCD_Reset_Switch)
-        self.set_dbus_value("com.victronenergy.system", "/Relay/9/State", self.Reverse_Power_Alarm)
+        self.set_dbus_value(self._dbus_relay_2, self.Off_LED)
+        self.set_dbus_value(self._dbus_relay_3, self.On_LED)
+        self.set_dbus_value(self._dbus_relay_4, self.Charge_LED)
+        self.set_dbus_value(self._dbus_relay_5, self.BMS_Wake)
+        self.set_dbus_value(self._dbus_relay_6, self.DSE_Remote_Start)
+        self.set_dbus_value(self._dbus_relay_7, self.DSE_Mode_Request)
+        self.set_dbus_value(self._dbus_relay_8, self.RCD_Reset_Switch)
+        self.set_dbus_value(self._dbus_relay_9, self.Reverse_Power_Alarm)
 
 
     def set_inverter_switch_mode(self):
-        self.set_dbus_value( "com.victronenergy.vebus.ttyS2", "/Mode", self.Inverter_Switch_Mode)
+        self.set_dbus_value( self._dbus_inverter_switch, self.Inverter_Switch_Mode)
 
     def check_reverse_power(self):
         if self.Reverse_Power_Detected:
@@ -197,8 +221,6 @@ class GeneratorController():
             self.Reverse_Power_Alarm = False
 
     def run(self):
-        DBusGMainLoop(set_as_default=True)
-        self.dbusConn = dbus.SessionBus() if 'DBUS_SESSION_BUS_ADDRESS' in os.environ else dbus.SystemBus()
 
         while True:
             self.update_mode()
@@ -207,6 +229,8 @@ class GeneratorController():
             self.check_reverse_power()
             self.set_outputs()
             self.set_inverter_switch_mode()
+            if (self.Service_Restart_Requested):
+                exit()
             # print(f"{datetime.isoformat(datetime.now())} : {self}")
             logger.info(self)
             sleep(TIMESTEP)
@@ -230,7 +254,16 @@ class GeneratorController():
 
 
 if __name__ == "__main__":
-    g = GeneratorController()
-    g.run()  # global dbusObjects  #  # print(__file__ + " starting up")
-
+    try:
+        print("Running generator_control.py")
+        print("Waiting 30s for system to startup")
+        sleep(30)
+        print("Running now!")
+        g = GeneratorController()
+        print(g)
+        g.run()  # global dbusObjects  #  # print(__file__ + " starting up")
+    except Exception as e:
+        print("Exception Raised")
+        print(e)
+        raise
     # # Have a mainloop, so we can send/receive asynchronous calls to and from dbus  # DBusGMainLoop(set_as_default=True)
