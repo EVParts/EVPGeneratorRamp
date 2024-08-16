@@ -157,14 +157,14 @@ class GeneratorController():
             pass  # Leave mode unchanged
 
         if (_last_mode != "Off") and (self.Mode != "Off"):
-            print(self)
+            print(self, flush=True)
 
     def get_dbus_value(self, dbus_item : VeDbusItemImport):
         # print(f"Get DBus Value () : {dbus_item.serviceName} - {dbus_item.path}")
         try:
             return dbus_item.get_value()
         except dbus.exceptions.DBusException as e:
-            print(f"Could not get DBUS Item : {dbus_item.serviceName} - {dbus_item.path}")
+            print(f"Could not get DBUS Item : {dbus_item.serviceName} - {dbus_item.path}", flush=True)
             print(e)
             return None
 
@@ -173,7 +173,7 @@ class GeneratorController():
         try:
             dbus_item.set_value(value)
         except dbus.exceptions.DBusException as e:
-            print(f"Could not set DBUS Item : {dbus_item.serviceName} - {dbus_item.path} : {value}")
+            print(f"Could not set DBUS Item : {dbus_item.serviceName} - {dbus_item.path} : {value}", flush=True)
             print(e)
             return None
 
@@ -182,7 +182,7 @@ class GeneratorController():
         if val:
             self.Battery_SOC = val
         else:
-            print("Did not receive data from battery")
+            print("Did not receive data from battery", flush=True)
             self.Battery_SOC = 0
 
     def update_ac_output_power(self):
@@ -190,7 +190,7 @@ class GeneratorController():
         if val:
             self.AC_Output_Power = val
         else:
-            print("Did not receive data from inverter")
+            print("Did not receive data from inverter", flush=True)
             self.AC_Output_Power = 0
 
     def set_outputs(self):
@@ -230,6 +230,8 @@ class GeneratorController():
             self.set_outputs()
             self.set_inverter_switch_mode()
             if (self.Service_Restart_Requested):
+                print("Service Restart Requested, Going Down in 5s!", flush=True)
+                sleep(5)
                 exit()
             # print(f"{datetime.isoformat(datetime.now())} : {self}")
             logger.info(self)
@@ -255,15 +257,15 @@ class GeneratorController():
 
 if __name__ == "__main__":
     try:
-        print("Running generator_control.py")
-        print("Waiting 30s for system to startup")
+        print("Running generator_control.py", flush=True)
+        print("Waiting 30s for system to startup", flush=True)
         sleep(30)
-        print("Running now!")
+        print("Running now!", flush=True)
         g = GeneratorController()
         print(g)
         g.run()  # global dbusObjects  #  # print(__file__ + " starting up")
     except Exception as e:
-        print("Exception Raised")
-        print(e)
+        print("Exception Raised", flush=True)
+        print(e, flush=True)
         raise
     # # Have a mainloop, so we can send/receive asynchronous calls to and from dbus  # DBusGMainLoop(set_as_default=True)
