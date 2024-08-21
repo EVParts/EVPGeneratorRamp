@@ -33,7 +33,9 @@ class GeneratorController():
     def __init__(self):
         DBusGMainLoop(set_as_default=True)
         self.dbusConn = dbus.SessionBus() if 'DBUS_SESSION_BUS_ADDRESS' in os.environ else dbus.SystemBus()
-        self.Mode = "Off"
+        self.Mode = ""
+        self.Fault_Detected = True
+        self._Toggle_State = False
         self.Battery_SOC = 0
         self.AC_Output_Power = 0
         self.Reverse_Power_Counter = 0
@@ -52,6 +54,10 @@ class GeneratorController():
         self._dbus_relay_8 = VeDbusItemImport(self.dbusConn, "com.victronenergy.system", "/Relay/8/State")
         self._dbus_relay_9 = VeDbusItemImport(self.dbusConn, "com.victronenergy.system", "/Relay/9/State")
 
+    @property
+    def Fault_Detected(self):
+        if self.Mode not in ["Off", "On", "ChargeOnly"]:
+            return True
 
     @property
     def Off_Button_Pressed(self):
@@ -194,7 +200,11 @@ class GeneratorController():
             self.AC_Output_Power = 0
 
     def set_outputs(self):
-        self.set_dbus_value(self._dbus_relay_2, self.Off_LED)
+        if (self.Fault_Detected):
+            self.set_dbus_value(self._dbus_relay_2, self._Toggle_State)
+            self._Toggle_State = not self._Toggle_State
+        else:
+            self.set_dbus_value(self._dbus_relay_2, self.Off_LED)
         self.set_dbus_value(self._dbus_relay_3, self.On_LED)
         self.set_dbus_value(self._dbus_relay_4, self.Charge_LED)
         self.set_dbus_value(self._dbus_relay_5, self.BMS_Wake)
@@ -250,6 +260,7 @@ class GeneratorController():
                          f"BMS Wake {self.BMS_Wake}",
                          f"DSE Start {self.DSE_Remote_Start}",
                          f"DSE Mode {self.DSE_Mode_Request}",
+                         f"Fault {self.Fault_Detected}",
                          ]
                         )
 
