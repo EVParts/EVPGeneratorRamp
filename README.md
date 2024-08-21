@@ -30,6 +30,9 @@ Go back to package manager and select Active Packages and install GuiMods then R
 
 ### Setup RemoteGPIO
 Remote GPIO needs to be configured to work with the DTWonder relay module.
+#### Ethernet
+Set the IP Address for the Victron to match the IP/subnet of the DTWonder.
+
 
 # TODO 
 Need to get second Ekrano working and then complete the documentation.

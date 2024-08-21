@@ -34,12 +34,14 @@ class GeneratorController():
         DBusGMainLoop(set_as_default=True)
         self.dbusConn = dbus.SessionBus() if 'DBUS_SESSION_BUS_ADDRESS' in os.environ else dbus.SystemBus()
         self.Mode = ""
-        self.Fault_Detected = True
         self._Toggle_State = False
         self.Battery_SOC = 0
         self.AC_Output_Power = 0
         self.Reverse_Power_Counter = 0
         self.Reverse_Power_Alarm = False
+
+        self.Inverter_Connected = True
+        self.BMS_Connected = True
 
         self._dbus_battery_soc = VeDbusItemImport(self.dbusConn, "com.victronenergy.system", "/Dc/Battery/Soc")
         self._dbus_ac_output_power = VeDbusItemImport(self.dbusConn, "com.victronenergy.vebus.ttyS2", "/Ac/Out/L1/P")
@@ -57,6 +59,12 @@ class GeneratorController():
     @property
     def Fault_Detected(self):
         if self.Mode not in ["Off", "On", "ChargeOnly"]:
+            return True
+        if self.BMS_Connected == False:
+            return True
+        if self.Inverter_Connected == False:
+            return True
+        if self.Reverse_Power_Alarm == False:
             return True
 
     @property
@@ -145,7 +153,7 @@ class GeneratorController():
             return INV_SWITCH_OFF
         else:
             modes = {"Off": INV_SWITCH_OFF, "On": INV_SWITCH_ON, "InvertOnly": INV_SWITCH_INVERT_ONLY, "ChargeOnly": INV_SWITCH_CHARGE_ONLY}
-            return modes[self.Mode]
+            return modes.get(self.Mode)
 
     @property
     def Reverse_Power_Detected(self):
@@ -166,36 +174,40 @@ class GeneratorController():
             print(self, flush=True)
 
     def get_dbus_value(self, dbus_item : VeDbusItemImport):
-        # print(f"Get DBus Value () : {dbus_item.serviceName} - {dbus_item.path}")
+        # print(f"Get DBus Value () : {dbus_item.serviceName} - {dbus_item.path}", flush=True)
         try:
             return dbus_item.get_value()
         except dbus.exceptions.DBusException as e:
             print(f"Could not get DBUS Item : {dbus_item.serviceName} - {dbus_item.path}", flush=True)
-            print(e)
+            print(e, flush=True))
             return None
 
     def set_dbus_value(self, dbus_item : VeDbusItemImport, value):
-        # print(f"Set DBus Value () : {dbus_item.serviceName} - {dbus_item.path} : {Value}")
+        # print(f"Set DBus Value () : {dbus_item.serviceName} - {dbus_item.path} : {Value}", flush=True))
         try:
             dbus_item.set_value(value)
         except dbus.exceptions.DBusException as e:
             print(f"Could not set DBUS Item : {dbus_item.serviceName} - {dbus_item.path} : {value}", flush=True)
-            print(e)
+            print(e, flush=True))
             return None
 
     def update_battery_soc(self):
         val = self.get_dbus_value(self._dbus_battery_soc)
         if val:
+            self.BMS_Connected = True
             self.Battery_SOC = val
         else:
+            self.BMS_Connected = False
             print("Did not receive data from battery", flush=True)
             self.Battery_SOC = 0
 
     def update_ac_output_power(self):
         val = self.get_dbus_value(self._dbus_ac_output_power)
         if val:
+            self.Inverter_Connected = True
             self.AC_Output_Power = val
         else:
+            self.Inverter_Connected = False
             print("Did not receive data from inverter", flush=True)
             self.AC_Output_Power = 0
 
@@ -243,7 +255,7 @@ class GeneratorController():
                 print("Service Restart Requested, Going Down in 5s!", flush=True)
                 sleep(5)
                 exit()
-            # print(f"{datetime.isoformat(datetime.now())} : {self}")
+            # print(f"{datetime.isoformat(datetime.now())} : {self}", flush=True))
             logger.info(self)
             sleep(TIMESTEP)
 
@@ -269,8 +281,8 @@ class GeneratorController():
 if __name__ == "__main__":
     try:
         print("Running generator_control.py", flush=True)
-        print("Waiting 30s for system to startup", flush=True)
-        sleep(30)
+        print("Waiting 10s for system to startup", flush=True)
+        sleep(10)
         print("Running now!", flush=True)
         g = GeneratorController()
         print(g)
