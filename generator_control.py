@@ -13,13 +13,6 @@ sys.path.insert(1, os.path.join(os.path.dirname(__file__), 'velib_python'))
 
 from vedbus import VeDbusItemImport
 
-from logger import setup_logging
-
-
-
-#logging.basicConfig( level=logging.DEBUG )
-logger = setup_logging(name="generator_control")
-
 softwareVersion = '1.0'
 
 INV_SWITCH_OFF = 4
@@ -27,7 +20,7 @@ INV_SWITCH_ON = 3
 INV_SWITCH_INVERT_ONLY = 2
 INV_SWITCH_CHARGE_ONLY = 1
 
-REVERSE_POWER_THRESHOLD = -5  # Amps
+REVERSE_POWER_CURRENT_THRESHOLD = -5  # Amps
 
 DEFAULT_MODE = "Off"
 
@@ -54,6 +47,10 @@ class GeneratorController():
         self.Inverter_Connected = False
         self.BMS_Connected = False
         self.outputs_str = ""
+
+        if PROFILEMEMORY:
+            self._initial_snapshot = None
+            self._current_snapshot = None
 
         self.dbus_items_spec = {
             "battery_soc": {"service": "com.victronenergy.system", "path": "/Dc/Battery/Soc"},
@@ -182,7 +179,7 @@ class GeneratorController():
     @property
     def Reverse_Power_Detected(self):
         if self.AC_Output_Current is not None:
-            return self.AC_Output_Current < REVERSE_POWER_THRESHOLD
+            return self.AC_Output_Current < REVERSE_POWER_CURRENT_THRESHOLD
         else:
             return False
 
@@ -316,13 +313,7 @@ class GeneratorController():
             self.Reverse_Power_Alarm = False
 
     def run(self):
-        if PROFILEMEMORY:
-            snapshot = tracemalloc.take_snapshot()
-            top_stats = snapshot.statistics('lineno')
-
-            print("[ Top 10 ]")
-            for stat in top_stats[:10]:
-                print(stat)
+        self.snapshot_memory()
 
         counter = 0
         while True:
@@ -346,15 +337,27 @@ class GeneratorController():
 
             counter+=1
             if counter % 60 == 0:
-                if PROFILEMEMORY:
-                    snapshot = tracemalloc.take_snapshot()
-                    top_stats = snapshot.statistics('lineno')
-
-                    print("[ Top 10 ]")
-                    for stat in top_stats[:10]:
-                        print(stat)
+                self.snapshot_memory()
 
             sleep(max(0, TIMESTEP - (time() - t0)))
+
+    def snapshot_memory(self):
+        if PROFILEMEMORY:
+            self._current_snapshot = tracemalloc.take_snapshot()
+            if self._initial_snapshot == None:
+                self._initial_snapshot = self._current_snapshot
+            top_stats = self._current_snapshot.compare_to(self._initial_snapshot, 'lineno')
+
+            print("\n*************** Memory Snapshot Top 20 ***************\n")
+            count = 0
+            for stat in top_stats:
+                if "tracemalloc.py" not in str(stat.traceback[0]):
+                    count += 1
+                    print(stat)
+                if count >= 20:
+                    break
+
+            print("\n******************************************************\n")
 
     def __repr__(self):
         return ',\t'.join([
@@ -394,7 +397,7 @@ if __name__ == "__main__":
             version = f.readline()
         print("\n\n****************************************\n")
         print(f"Running generator_control.py \t{version}", flush=True)
-        print("\n******************************************\n\n")
+        print("\n****************************************\n\n")
         print("Waiting 10s for system to startup", flush=True)
         sleep(10)
         print("Running now!", flush=True)
