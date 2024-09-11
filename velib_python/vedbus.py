@@ -340,7 +340,6 @@ class VeDbusItemImport(object):
 			self._cachedvalue = unwrap_dbus_value(v)
 
 	def __del__(self):
-		print(f"DELETING VEDEBUSITEM : {self.serviceName}:{self.path}")
 		if self._match is not None:
 			self._match.remove()
 			self._match = None

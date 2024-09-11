@@ -2,6 +2,7 @@
 import datetime
 import os
 import sys
+from os.path import join, abspath, dirname
 from time import time, sleep
 
 import dbus
@@ -13,6 +14,8 @@ sys.path.insert(1, os.path.join(os.path.dirname(__file__), 'velib_python'))
 from vedbus import VeDbusItemImport
 
 from logger import setup_logging
+
+
 
 #logging.basicConfig( level=logging.DEBUG )
 logger = setup_logging(name="generator_control")
@@ -31,6 +34,10 @@ DEFAULT_MODE = "Off"
 TIMESTEP = 1
 REVERSE_POWER_COUNTER_THRESHOLD = 10 / TIMESTEP  # 10s
 
+PROFILEMEMORY = True
+
+if PROFILEMEMORY:
+    import tracemalloc
 
 class GeneratorController():
     def __init__(self):
@@ -40,7 +47,7 @@ class GeneratorController():
         self._Toggle_State = False
         self._inverter_switch_mode_update_time = 0
         self.Battery_SOC = 0
-        self.AC_Output_Current = 0
+        self.AC_Output_Current = None
         self.Inverter_Switch_Mode = 0
         self.Reverse_Power_Counter = 0
         self.Reverse_Power_Alarm = False
@@ -50,7 +57,7 @@ class GeneratorController():
 
         self.dbus_items_spec = {
             "battery_soc": {"service": "com.victronenergy.system", "path": "/Dc/Battery/Soc"},
-            "ac_output_current": {"service": "com.victronenergy.vebus.ttyS2", "path": "/Ac/Out/L1/I"},
+            "ac_output_current":    {"service": "com.victronenergy.vebus.ttyS2", "path": "/Ac/Out/L1/I"},
             "inverter_switch_mode": {"service": "com.victronenergy.vebus.ttyS2", "path": "/Mode"},
             "relay_2": {"service": "com.victronenergy.system", "path": "/Relay/2/State"},
             "relay_3": {"service": "com.victronenergy.system", "path": "/Relay/3/State"},
@@ -174,7 +181,10 @@ class GeneratorController():
 
     @property
     def Reverse_Power_Detected(self):
-        return self.AC_Output_Current < REVERSE_POWER_THRESHOLD
+        if self.AC_Output_Current is not None:
+            return self.AC_Output_Current < REVERSE_POWER_THRESHOLD
+        else:
+            return False
 
     def update_mode(self):
         _last_mode = self.Mode
@@ -213,11 +223,11 @@ class GeneratorController():
                 print(f"Could not set DBUS Item : {dbus_item.serviceName} - {dbus_item.path} : {value}", flush=True)
                 print(e, flush=True)
                 return None
-    #
-    # def clear_dbus_item(self, dbus_item_name):
-    #     dbus_item = self.dbus_items.pop(dbus_item_name)
-    #     if isinstance(dbus_item, VeDbusItemImport):
-    #         pass
+
+    def clear_dbus_item(self, dbus_item_name):
+        dbus_item = self.dbus_items.pop(dbus_item_name)
+        if isinstance(dbus_item, VeDbusItemImport):
+            pass
 
     def update_battery_soc(self):
         val = self.get_dbus_value("battery_soc")
@@ -230,16 +240,15 @@ class GeneratorController():
             self.Battery_SOC = 0
 
     def update_ac_output_current(self):
-        print("Getting AC Out Curr")
         val = self.get_dbus_value("ac_output_current")
-        print(f"Got AC Out Curr : {val}")
         if val is not None:
             self.Inverter_Connected = True
             self.AC_Output_Current = val
         else:
             self.Inverter_Connected = False
             print("Did not receive data from inverter", flush=True)
-            self.AC_Output_Current = 0
+            self.AC_Output_Current = None
+            self.clear_dbus_item("ac_output_current")
 
     def update_inverter_switch_mode(self):
         val = self.get_dbus_value("inverter_switch_mode")
@@ -307,23 +316,44 @@ class GeneratorController():
             self.Reverse_Power_Alarm = False
 
     def run(self):
+        if PROFILEMEMORY:
+            snapshot = tracemalloc.take_snapshot()
+            top_stats = snapshot.statistics('lineno')
+
+            print("[ Top 10 ]")
+            for stat in top_stats[:10]:
+                print(stat)
+
         counter = 0
         while True:
             t0 = time()
+            self.check_and_create_connections()
             self.update_mode()
             self.update_battery_soc()
-            self.update_ac_output_current()
-            self.check_reverse_power()
+            if self.Mode == "On" or self.Mode == "ChargeOnly":
+                self.update_ac_output_current()
+                self.check_reverse_power()
             self.set_outputs()
             self.update_inverter_switch_mode()
             self.set_inverter_switch_mode()
-            self.check_and_create_connections()
+
             if (self.Service_Restart_Requested):
                 print("Service Restart Requested, Going Down in 5s!", flush=True)
                 sleep(5)
                 exit()
             # print(f"{datetime.isoformat(datetime.now())} : {self}", flush=True))
             print(self, flush=True)
+
+            counter+=1
+            if counter % 60 == 0:
+                if PROFILEMEMORY:
+                    snapshot = tracemalloc.take_snapshot()
+                    top_stats = snapshot.statistics('lineno')
+
+                    print("[ Top 10 ]")
+                    for stat in top_stats[:10]:
+                        print(stat)
+
             sleep(max(0, TIMESTEP - (time() - t0)))
 
     def __repr__(self):
@@ -348,6 +378,7 @@ class GeneratorController():
         for k, v in self.dbus_items_spec.items():
             if self.dbus_items.get(k) is None:
                 try:
+                    print(f"Creating DBUS Item - {v['service']} : {v['path']}")
                     self.dbus_items[k] = VeDbusItemImport(self.dbusConn, v['service'], v['path'])
                 except Exception as e:
                     self.dbus_items[k] = None
@@ -356,8 +387,14 @@ class GeneratorController():
 
 
 if __name__ == "__main__":
+    if PROFILEMEMORY:
+        tracemalloc.start()
     try:
-        print("Running generator_control.py", flush=True)
+        with open(join(dirname(__file__), "version")) as f:
+            version = f.readline()
+        print("\n\n****************************************\n")
+        print(f"Running generator_control.py \t{version}", flush=True)
+        print("\n******************************************\n\n")
         print("Waiting 10s for system to startup", flush=True)
         sleep(10)
         print("Running now!", flush=True)
