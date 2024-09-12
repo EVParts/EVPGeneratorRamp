@@ -13,6 +13,7 @@ from dbus.mainloop.glib import DBusGMainLoop
 sys.path.insert(1, os.path.join(os.path.dirname(__file__), 'velib_python'))
 
 from vedbus import VeDbusItemImport
+from ve_utils import unwrap_dbus_value
 
 softwareVersion = '1.0'
 
@@ -169,8 +170,12 @@ class GeneratorController():
 
     @property
     def RCD_Reset_Switch(self):
-        # If on and off buttons held down then trigger RCD reset relay
-        return ((self.Off_Button_Pressed) and (self.On_Button_Pressed))
+        # If (on and off) or (charge and off) buttons held down then trigger RCD reset relay
+        return (
+                ((self.Off_Button_Pressed) and (self.On_Button_Pressed) and not (self.Charge_Button_Pressed)) or
+                ((self.Off_Button_Pressed) and (self.Charge_Button_Pressed) and not (self.On_Button_Pressed))
+        )
+
 
     @property
     def Service_Restart_Requested(self):
@@ -199,23 +204,23 @@ class GeneratorController():
         if self.Mode == "":
             self.Mode = DEFAULT_MODE
 
-        if self.Off_Button_Pressed:
+        if self.Off_Button_Pressed and not (self.On_Button_Pressed or self.Charge_Button_Pressed):
             self.Mode = "Off"
-        elif self.On_Button_Pressed:
+        elif self.On_Button_Pressed and not (self.Off_Button_Pressed or self.Charge_Button_Pressed):
             self.Mode = "On"
-        elif self.Charge_Button_Pressed:
+        elif self.Charge_Button_Pressed and not (self.On_Button_Pressed or self.Off_Button_Pressed):
             self.Mode = "ChargeOnly"
         else:
             pass  # Leave mode unchanged
-
-        if (_last_mode != "Off") and (self.Mode != "Off"):
-            print(self, flush=True)
+        #
+        # if (_last_mode != "Off") and (self.Mode != "Off"):
+        #     print(self, flush=True)
 
     def get_dbus_value(self, dbus_item_name: str):
         if (dbus_item := self.dbus_items.get(dbus_item_name)) is not None:
             # print(f"Get DBus Value () : {dbus_item.serviceName} - {dbus_item.path}", flush=True)
             try:
-                return dbus_item.get_value()
+                return unwrap_dbus_value(dbus_item._proxy.GetValue())
             except dbus.exceptions.DBusException as e:
                 print(f"Could not get DBUS Item : {dbus_item.serviceName} - {dbus_item.path}", flush=True)
                 print(e, flush=True)
@@ -226,7 +231,6 @@ class GeneratorController():
             # print(f"Set DBus Value () : {dbus_item.serviceName} - {dbus_item.path} : {Value}", flush=True))
             try:
                 dbus_item.set_value(value)
-                assert isinstance(dbus_item, VeDbusItemImport)
             except dbus.exceptions.DBusException as e:
                 print(f"Could not set DBUS Item : {dbus_item.serviceName} - {dbus_item.path} : {value}", flush=True)
                 print(e, flush=True)
@@ -269,7 +273,7 @@ class GeneratorController():
 
     def update_relay_states(self):
         self.relay_states = {}
-        for relay_no in range(2,10):
+        for relay_no in range(2, 10):
             self.relay_states[relay_no] = self.get_dbus_value(f"relay_{relay_no}")
         pprint({"Relays" : self.relay_states}, width=200)
 
