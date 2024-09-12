@@ -94,47 +94,51 @@ class GeneratorController():
     # if self.Relays_Connected == False:
     #     return True
 
+    def update_inputs(self):
+        self.input_values = {
+            "Off_Button": self.read_input(5),
+            "On_Button": self.read_input(6),
+            "Charge_Button": self.read_input(7),
+            "Off_LED": self.read_input(8),
+            "On_LED": self.read_input(9),
+            "Charge_LED": self.read_input('a'),
+            "BMS_Wake": self.read_input('b'),
+        }
+        pprint({"Inputs": self.input_values}, width=200)
+
+
+    def read_input(self, input_no):
+        path = f"/dev/gpio/digital_input_{input_no}/value"
+        with open(path) as f:
+            return 1 if (f.read().strip() == '1') else 0
+
     @property
     def Off_Button_Pressed(self):
-        path = "/dev/gpio/digital_input_5/value"
-        with open(path) as f:
-            return (f.read().strip() == '1')
+        return self.input_values.get("Off_Button")
 
     @property
     def On_Button_Pressed(self):
-        path = "/dev/gpio/digital_input_6/value"
-        with open(path) as f:
-            return (f.read().strip() == '1')
+        return self.input_values.get("On_Button")
 
     @property
     def Charge_Button_Pressed(self):
-        path = "/dev/gpio/digital_input_7/value"
-        with open(path) as f:
-            return (f.read().strip() == '1')
+        return self.input_values.get("Charge_Button")
 
     @property
     def Off_LED_Feedback(self):
-        path = "/dev/gpio/digital_input_8/value"
-        with open(path) as f:
-            return (f.read().strip() == '1')
+        return self.input_values.get("Off_LED")
 
     @property
     def On_LED_Feedback(self):
-        path = "/dev/gpio/digital_input_9/value"
-        with open(path) as f:
-            return (f.read().strip() == '1')
+        return self.input_values.get("On_LED")
 
     @property
     def Charge_LED_Feedback(self):
-        path = "/dev/gpio/digital_input_a/value"
-        with open(path) as f:
-            return (f.read().strip() == '1')
+        return self.input_values.get("Charge_LED")
 
     @property
     def BMS_Wake_Feedback(self):
-        path = "/dev/gpio/digital_input_b/value"
-        with open(path) as f:
-            return (f.read().strip() == '1')
+        return self.input_values.get("BMS_Wake")
 
     @property
     def Off_LED(self):
@@ -267,7 +271,7 @@ class GeneratorController():
         self.relay_states = {}
         for relay_no in range(2,10):
             self.relay_states[relay_no] = self.get_dbus_value(f"relay_{relay_no}")
-        pprint({"Relays" : self.relay_states})
+        pprint({"Relays" : self.relay_states}, width=200)
 
     def set_off_led(self):
         if (self.Fault_Detected):
@@ -330,6 +334,7 @@ class GeneratorController():
         while True:
             t0 = time()
             self.check_and_create_connections()
+            self.update_inputs()
             self.update_mode()
             self.update_battery_soc()
             if self.Mode == "On" or self.Mode == "ChargeOnly":
