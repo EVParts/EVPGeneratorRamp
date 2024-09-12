@@ -3,6 +3,7 @@ import datetime
 import os
 import sys
 from os.path import join, abspath, dirname
+from pprint import pprint
 from time import time, sleep
 
 import dbus
@@ -27,6 +28,8 @@ DEFAULT_MODE = "Off"
 TIMESTEP = 1
 REVERSE_POWER_COUNTER_THRESHOLD = 10 / TIMESTEP  # 10s
 
+EXCEPTION_THRESHOLD = 10
+
 PROFILEMEMORY = True
 
 if PROFILEMEMORY:
@@ -46,7 +49,10 @@ class GeneratorController():
         self.Reverse_Power_Alarm = False
         self.Inverter_Connected = False
         self.BMS_Connected = False
+        self.relay_states = {}
+
         self.outputs_str = ""
+
 
         if PROFILEMEMORY:
             self._initial_snapshot = None
@@ -209,22 +215,22 @@ class GeneratorController():
             except dbus.exceptions.DBusException as e:
                 print(f"Could not get DBUS Item : {dbus_item.serviceName} - {dbus_item.path}", flush=True)
                 print(e, flush=True)
-                return None
+                self.clear_dbus_item(dbus_item_name)
 
     def set_dbus_value(self, dbus_item_name: str, value):
         if (dbus_item := self.dbus_items.get(dbus_item_name)) is not None:
             # print(f"Set DBus Value () : {dbus_item.serviceName} - {dbus_item.path} : {Value}", flush=True))
             try:
                 dbus_item.set_value(value)
+                assert isinstance(dbus_item, VeDbusItemImport)
             except dbus.exceptions.DBusException as e:
                 print(f"Could not set DBUS Item : {dbus_item.serviceName} - {dbus_item.path} : {value}", flush=True)
                 print(e, flush=True)
-                return None
+                self.clear_dbus_item(dbus_item_name)
 
     def clear_dbus_item(self, dbus_item_name):
         dbus_item = self.dbus_items.pop(dbus_item_name)
-        if isinstance(dbus_item, VeDbusItemImport):
-            pass
+        del dbus_item
 
     def update_battery_soc(self):
         val = self.get_dbus_value("battery_soc")
@@ -257,39 +263,36 @@ class GeneratorController():
             print("Did not receive switch mode from inverter", flush=True)
             self.Inverter_Switch_Mode = 0
 
-    def set_outputs(self):
-        outs = ""
+    def update_relay_states(self):
+        self.relay_states = {}
+        for relay_no in range(2,10):
+            self.relay_states[relay_no] = self.get_dbus_value(f"relay_{relay_no}")
+        pprint({"Relays" : self.relay_states})
+
+    def set_off_led(self):
         if (self.Fault_Detected):
-            outs += "1" if self._Toggle_State else "0"
             self.set_dbus_value("relay_2", self._Toggle_State)
             self._Toggle_State = not self._Toggle_State
         else:
-            outs += "1" if self.Off_LED else "0"
             self.set_dbus_value("relay_2", self.Off_LED)
 
-        outs += "1" if self.On_LED else "0"
-        outs += "1" if self.Charge_LED else "0"
-        outs += "-"
-        outs += "1" if self.BMS_Wake else "0"
-        outs += "-"
-        outs += "1" if self.DSE_Remote_Start else "0"
-        outs += "1" if self.DSE_Mode_Request else "0"
-        outs += "-"
-        outs += "1" if self.RCD_Reset_Switch else "0"
-        outs += "-"
-        outs += "1" if self.Reverse_Power_Alarm else "0"
+    def set_outputs(self):
+        if (self.Fault_Detected):
+            self.set_relay(2,  self._Toggle_State)
+            self._Toggle_State = not self._Toggle_State
+        else:
+            self.set_relay(2,  self.Off_LED)
 
-        self.set_dbus_value("relay_3", self.On_LED)
-        self.set_dbus_value("relay_4", self.Charge_LED)
-        self.set_dbus_value("relay_5", self.BMS_Wake)
-        self.set_dbus_value("relay_6", self.DSE_Remote_Start)
-        self.set_dbus_value("relay_7", self.DSE_Mode_Request)
-        self.set_dbus_value("relay_8", self.RCD_Reset_Switch)
-        self.set_dbus_value("relay_9", self.Reverse_Power_Alarm)
-        self.outputs_str = outs
+
+        self.set_relay(3, self.On_LED)
+        self.set_relay(4, self.Charge_LED)
+        self.set_relay(5, self.BMS_Wake)
+        self.set_relay(6, self.DSE_Remote_Start)
+        self.set_relay(7, self.DSE_Mode_Request)
+        self.set_relay(8, self.RCD_Reset_Switch)
+        self.set_relay(9, self.Reverse_Power_Alarm)
 
     def set_inverter_switch_mode(self):
-
         if self.Inverter_Switch_Mode_Target != self.Inverter_Switch_Mode:  # Only Update the switch mode when it changes.
             if (time() - self._inverter_switch_mode_update_time) > 5:
                 self._inverter_switch_mode_update_time = time()
@@ -297,6 +300,14 @@ class GeneratorController():
                 print(f"Updating switch mode from {self.Inverter_Switch_Mode} to {self.Inverter_Switch_Mode_Target}.", flush=True)
             else:
                 print("Not updating the switch mode until 5s have elapsed.", flush=True)
+
+    def set_relay(self, relay_no, target_value):
+        if isinstance(target_value, bool):
+            target_value = int(target_value)
+        if target_value != self.relay_states.get(relay_no): # Only Update the switch mode when it changes.
+            print(f"Setting Relay {relay_no} to {target_value}")
+            self.set_dbus_value(f"relay_{relay_no}", target_value)
+
 
     def check_reverse_power(self):
         if self.Reverse_Power_Detected:
@@ -324,6 +335,7 @@ class GeneratorController():
             if self.Mode == "On" or self.Mode == "ChargeOnly":
                 self.update_ac_output_current()
                 self.check_reverse_power()
+            self.update_relay_states()
             self.set_outputs()
             self.update_inverter_switch_mode()
             self.set_inverter_switch_mode()
@@ -361,7 +373,7 @@ class GeneratorController():
 
     def __repr__(self):
         return ',\t'.join([
-            f"Relays {self.outputs_str}",
+            # f"Relays {self.outputs_str}",
             f"Mode {self.Mode}",
             f"SOC {self.Battery_SOC}%",
             f"AC Out {self.AC_Output_Current}A",
