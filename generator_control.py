@@ -44,6 +44,8 @@ class GeneratorController():
         self._Toggle_State = False
         self._inverter_switch_mode_update_time = 0
         self.Battery_SOC = 0
+        self.Battery_Charge_Limit = 0
+        self.Battery_Discharge_Limit = 0
         self.AC_Output_Current = None
         self.Inverter_Switch_Mode = 0
         self.Reverse_Power_Counter = 0
@@ -51,6 +53,7 @@ class GeneratorController():
         self.Inverter_Connected = False
         self.BMS_Connected = False
         self.relay_states = {}
+        self.inverter_delay = 0
 
         self.outputs_str = ""
 
@@ -61,6 +64,8 @@ class GeneratorController():
 
         self.dbus_items_spec = {
             "battery_soc": {"service": "com.victronenergy.system", "path": "/Dc/Battery/Soc"},
+            "battery_charge_limit": {"service": "com.victronenergy.battery.socketcan_vecan0", "path": "/Info/MaxChargeCurrent"},
+            "battery_discharge_limit": {"service": "com.victronenergy.battery.socketcan_vecan0", "path": "/Info/MaxDischargeCurrent"},
             "ac_output_current":    {"service": "com.victronenergy.vebus.ttyS2", "path": "/Ac/Out/L1/I"},
             "inverter_switch_mode": {"service": "com.victronenergy.vebus.ttyS2", "path": "/Mode"},
             "relay_2": {"service": "com.victronenergy.system", "path": "/Relay/2/State"},
@@ -198,7 +203,15 @@ class GeneratorController():
         else:
             return False
 
+    @property
+    def Battery_Contactors_Closed(self):
+        val = (self.Battery_Charge_Limit) and (self.Battery_Discharge_Limit) # Non zero current limits means that 48V system is online
+        if val == False:
+            self.inverter_delay = 10
+        return val
+
     def update_mode(self):
+        print(f"mode : {self.Mode} {self.inverter_delay}s")
         _last_mode = self.Mode
 
         if self.Mode == "":
@@ -215,6 +228,7 @@ class GeneratorController():
         #
         # if (_last_mode != "Off") and (self.Mode != "Off"):
         #     print(self, flush=True)
+        print(f"mode : {self.Mode} {self.inverter_delay}s")
 
     def get_dbus_value(self, dbus_item_name: str):
         if (dbus_item := self.dbus_items.get(dbus_item_name)) is not None:
@@ -247,14 +261,25 @@ class GeneratorController():
             self.Battery_SOC = val
         else:
             self.BMS_Connected = False
-            print("Did not receive data from battery", flush=True)
+            print("Did not receive data from battery about SOC", flush=True)
             self.Battery_SOC = 0
+
+    def update_battery_limits(self):
+        charge_lim = self.get_dbus_value("battery_charge_limit")
+        discharge_lim = self.get_dbus_value("battery_charge_limit")
+        if (self.Battery_Charge_Limit is not None) and (self.Battery_Discharge_Limit is not None):
+            self.BMS_Connected = True
+            self.Battery_Charge_Limit = round(charge_lim,1)
+            self.Battery_Discharge_Limit = round(discharge_lim,1)
+        else:
+            self.BMS_Connected = False
+            print("Did not receive data from battery about current limits", flush=True)
 
     def update_ac_output_current(self):
         val = self.get_dbus_value("ac_output_current")
         if val is not None:
             self.Inverter_Connected = True
-            self.AC_Output_Current = val
+            self.AC_Output_Current = round(val, 1)
         else:
             self.Inverter_Connected = False
             print("Did not receive data from inverter", flush=True)
@@ -302,12 +327,18 @@ class GeneratorController():
 
     def set_inverter_switch_mode(self):
         if self.Inverter_Switch_Mode_Target != self.Inverter_Switch_Mode:  # Only Update the switch mode when it changes.
-            if (time() - self._inverter_switch_mode_update_time) > 5:
-                self._inverter_switch_mode_update_time = time()
-                self.set_dbus_value("inverter_switch_mode", self.Inverter_Switch_Mode_Target)
-                print(f"Updating switch mode from {self.Inverter_Switch_Mode} to {self.Inverter_Switch_Mode_Target}.", flush=True)
-            else:
-                print("Not updating the switch mode until 5s have elapsed.", flush=True)
+            if (self.Battery_Contactors_Closed): # Only attempt to contol the inverter if the 48V system has become live already
+                if self.inverter_delay == 0:
+                    if (time() - self._inverter_switch_mode_update_time) > 5:
+                        self._inverter_switch_mode_update_time = time()
+                        self.set_dbus_value("inverter_switch_mode", self.Inverter_Switch_Mode_Target)
+                        print(f"Updating switch mode from {self.Inverter_Switch_Mode} to {self.Inverter_Switch_Mode_Target}.", flush=True)
+                    else:
+                        print("Not updating the switch mode until 5s have elapsed.", flush=True)
+                else:
+                    print(f"Waiting {self.inverter_delay}s before activating the inverter")
+                    self.inverter_delay -= 1
+                    self.inverter_delay = max(0, self.inverter_delay)
 
     def set_relay(self, relay_no, target_value):
         if isinstance(target_value, bool):
@@ -341,6 +372,7 @@ class GeneratorController():
             self.update_inputs()
             self.update_mode()
             self.update_battery_soc()
+            self.update_battery_limits()
             if self.Mode == "On" or self.Mode == "ChargeOnly":
                 self.update_ac_output_current()
                 self.check_reverse_power()
@@ -385,6 +417,7 @@ class GeneratorController():
             # f"Relays {self.outputs_str}",
             f"Mode {self.Mode}",
             f"SOC {self.Battery_SOC}%",
+            f"Limits {self.Battery_Charge_Limit}A/{self.Battery_Discharge_Limit}A",
             f"AC Out {self.AC_Output_Current}A",
             f"Switch Mode {self.Inverter_Switch_Mode_Target}/{self.Inverter_Switch_Mode}",
             f"Rev Pwr {self.Reverse_Power_Detected} - {self.Reverse_Power_Counter * TIMESTEP}s",
@@ -394,6 +427,7 @@ class GeneratorController():
             # f"BMS Wake {self.BMS_Wake}",
             # f"DSE Start {self.DSE_Remote_Start}",
             # f"DSE Mode {self.DSE_Mode_Request}",
+            f"Inv Delay {self.inverter_delay}s",
             f"Fault {self.Fault_Detected}",
         ]
         )
