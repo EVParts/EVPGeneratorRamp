@@ -43,6 +43,8 @@ class GeneratorController():
         self.Mode = ""
         self._Toggle_State = False
         self._inverter_switch_mode_update_time = 0
+        self.Off_Button_Pressed_Counter = 0
+        self.BMS_Disable = False
         self.Battery_SOC = 0
         self.Battery_Charge_Limit = 0
         self.Battery_Discharge_Limit = 0
@@ -161,7 +163,7 @@ class GeneratorController():
     @property
     def BMS_Wake(self):
         # BMS Wake set in all modes except off with low SOC
-        return not ((self.Mode == "Off") and (self.Battery_SOC < 50))
+        return not ((self.Mode == "Off") and ((self.Battery_SOC < 50) or (self.BMS_Disable)))
 
     @property
     def DSE_Remote_Start(self):
@@ -211,24 +213,32 @@ class GeneratorController():
         return val
 
     def update_mode(self):
-        print(f"mode : {self.Mode} {self.inverter_delay}s")
         _last_mode = self.Mode
 
         if self.Mode == "":
             self.Mode = DEFAULT_MODE
 
+        if self.Off_Button_Pressed:
+            self.Off_Button_Pressed_Counter += 1
+        else:
+            self.Off_Button_Pressed_Counter = 0
+
+        if self.Off_Button_Pressed_Counter >= 10:
+            self.BMS_Disable = True
+
         if self.Off_Button_Pressed and not (self.On_Button_Pressed or self.Charge_Button_Pressed):
             self.Mode = "Off"
         elif self.On_Button_Pressed and not (self.Off_Button_Pressed or self.Charge_Button_Pressed):
             self.Mode = "On"
+            self.BMS_Disable = False
         elif self.Charge_Button_Pressed and not (self.On_Button_Pressed or self.Off_Button_Pressed):
             self.Mode = "ChargeOnly"
+            self.BMS_Disable = False
         else:
             pass  # Leave mode unchanged
         #
         # if (_last_mode != "Off") and (self.Mode != "Off"):
         #     print(self, flush=True)
-        print(f"mode : {self.Mode} {self.inverter_delay}s")
 
     def get_dbus_value(self, dbus_item_name: str):
         if (dbus_item := self.dbus_items.get(dbus_item_name)) is not None:
@@ -429,6 +439,7 @@ class GeneratorController():
             # f"DSE Mode {self.DSE_Mode_Request}",
             f"Inv Delay {self.inverter_delay}s",
             f"Fault {self.Fault_Detected}",
+            f"off_counter {self.Off_Button_Pressed_Counter}",
         ]
         )
 
