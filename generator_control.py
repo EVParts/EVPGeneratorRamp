@@ -276,7 +276,7 @@ class GeneratorController():
 
     def update_battery_limits(self):
         charge_lim = self.get_dbus_value("battery_charge_limit")
-        discharge_lim = self.get_dbus_value("battery_charge_limit")
+        discharge_lim = self.get_dbus_value("battery_discharge_limit")
         if (self.Battery_Charge_Limit is not None) and (self.Battery_Discharge_Limit is not None):
             self.BMS_Connected = True
             self.Battery_Charge_Limit = round(charge_lim,1)
