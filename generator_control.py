@@ -360,6 +360,7 @@ class GeneratorController():
 
         if all_ok:
             #print("All Relays Set OK")
+            pass
         else:
             print("All Relays not Set OK")
             raise RuntimeError("Could not control Relays!!!")
