@@ -8,6 +8,7 @@ from pprint import pprint
 from time import time, sleep
 
 import dbus
+import psutil
 from dbus.mainloop.glib import DBusGMainLoop
 
 # our own packages
@@ -482,9 +483,17 @@ class GeneratorController():
 
         age = (time() - state.get("Time", 0))
         if age < 60:
-            mode = state.get("Mode", "Err")
-            print(f"Found a stored state dump which is less than 60s old ({age}s) restoring state : {mode}")
-            self.Mode = mode
+            print(f"Found a stored state dump which is less than 60s old ({age}s)")
+            if psutil.boot_time() > state.get("Time", 0):
+                print("System reboot detected more recently than stored state, ignoring stored state.")
+            else:
+                mode = state.get("Mode", "Err")
+                if mode not in ["Off", "On", "ChargeOnly"]:
+                    print(f"Unknown Mode detected : {mode}")
+                else:
+                    print(f"Restoring Mode : {mode}")
+                    self.Mode = mode
+
 
 
 if __name__ == "__main__":
