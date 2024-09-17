@@ -22,7 +22,7 @@ INV_SWITCH_ON = 3
 INV_SWITCH_INVERT_ONLY = 2
 INV_SWITCH_CHARGE_ONLY = 1
 
-REVERSE_POWER_CURRENT_THRESHOLD = -5  # Amps
+REVERSE_POWER_THRESHOLD = -500  # Watts
 
 DEFAULT_MODE = "Off"
 
@@ -48,7 +48,7 @@ class GeneratorController():
         self.Battery_SOC = 0
         self.Battery_Charge_Limit = 0
         self.Battery_Discharge_Limit = 0
-        self.AC_Output_Current = None
+        self.AC_Output_Power = None
         self.Inverter_Switch_Mode = 0
         self.Reverse_Power_Counter = 0
         self.Reverse_Power_Alarm = False
@@ -68,7 +68,7 @@ class GeneratorController():
             "battery_soc": {"service": "com.victronenergy.system", "path": "/Dc/Battery/Soc"},
             "battery_charge_limit": {"service": "com.victronenergy.battery.socketcan_vecan0", "path": "/Info/MaxChargeCurrent"},
             "battery_discharge_limit": {"service": "com.victronenergy.battery.socketcan_vecan0", "path": "/Info/MaxDischargeCurrent"},
-            "ac_output_current":    {"service": "com.victronenergy.vebus.ttyS2", "path": "/Ac/Out/L1/I"},
+            "ac_output_power":    {"service": "com.victronenergy.vebus.ttyS2", "path": "/Ac/Out/L1/P"},
             "inverter_switch_mode": {"service": "com.victronenergy.vebus.ttyS2", "path": "/Mode"},
             "relay_2": {"service": "com.victronenergy.system", "path": "/Relay/2/State"},
             "relay_3": {"service": "com.victronenergy.system", "path": "/Relay/3/State"},
@@ -150,7 +150,7 @@ class GeneratorController():
 
     @property
     def Off_LED(self):
-        return self.Mode == "Off"
+        return self.Mode == "Off" and not self.BMS_Disable
 
     @property
     def On_LED(self):
@@ -200,8 +200,8 @@ class GeneratorController():
 
     @property
     def Reverse_Power_Detected(self):
-        if self.AC_Output_Current is not None:
-            return self.AC_Output_Current < REVERSE_POWER_CURRENT_THRESHOLD
+        if self.AC_Output_Power is not None:
+            return self.AC_Output_Power < REVERSE_POWER_THRESHOLD
         else:
             return False
 
@@ -209,7 +209,7 @@ class GeneratorController():
     def Battery_Contactors_Closed(self):
         val = (self.Battery_Charge_Limit) and (self.Battery_Discharge_Limit) # Non zero current limits means that 48V system is online
         if val == False:
-            self.inverter_delay = 10
+            self.inverter_delay = 0
         return val
 
     def update_mode(self):
@@ -261,8 +261,12 @@ class GeneratorController():
                 self.clear_dbus_item(dbus_item_name)
 
     def clear_dbus_item(self, dbus_item_name):
-        dbus_item = self.dbus_items.pop(dbus_item_name)
-        del dbus_item
+        print(f"Removing dbus item : {dbus_item_name}", flush=True)
+        try: # Try to remove the offending dbus item
+            dbus_item = self.dbus_items.pop(dbus_item_name)
+            del dbus_item
+        except KeyError:
+            print("Could not find dbus item to remove", flush=True)
 
     def update_battery_soc(self):
         val = self.get_dbus_value("battery_soc")
@@ -277,7 +281,7 @@ class GeneratorController():
     def update_battery_limits(self):
         charge_lim = self.get_dbus_value("battery_charge_limit")
         discharge_lim = self.get_dbus_value("battery_discharge_limit")
-        if (self.Battery_Charge_Limit is not None) and (self.Battery_Discharge_Limit is not None):
+        if (charge_lim is not None) and (discharge_lim is not None):
             self.BMS_Connected = True
             self.Battery_Charge_Limit = round(charge_lim,1)
             self.Battery_Discharge_Limit = round(discharge_lim,1)
@@ -285,16 +289,16 @@ class GeneratorController():
             self.BMS_Connected = False
             print("Did not receive data from battery about current limits", flush=True)
 
-    def update_ac_output_current(self):
-        val = self.get_dbus_value("ac_output_current")
+    def update_ac_output_power(self):
+        val = self.get_dbus_value("ac_output_power")
         if val is not None:
             self.Inverter_Connected = True
-            self.AC_Output_Current = round(val, 1)
+            self.AC_Output_Power = round(val, 1)
         else:
             self.Inverter_Connected = False
             print("Did not receive data from inverter", flush=True)
-            self.AC_Output_Current = None
-            self.clear_dbus_item("ac_output_current")
+            self.AC_Output_Power = None
+            self.clear_dbus_item("ac_output_power")
 
     def update_inverter_switch_mode(self):
         val = self.get_dbus_value("inverter_switch_mode")
@@ -384,7 +388,7 @@ class GeneratorController():
             self.update_battery_soc()
             self.update_battery_limits()
             if self.Mode == "On" or self.Mode == "ChargeOnly":
-                self.update_ac_output_current()
+                self.update_ac_output_power()
                 self.check_reverse_power()
             self.update_relay_states()
             self.set_outputs()
@@ -428,7 +432,7 @@ class GeneratorController():
             f"Mode {self.Mode}",
             f"SOC {self.Battery_SOC}%",
             f"Limits {self.Battery_Charge_Limit}A/{self.Battery_Discharge_Limit}A",
-            f"AC Out {self.AC_Output_Current}A",
+            f"AC Out {self.AC_Output_Power}W",
             f"Switch Mode {self.Inverter_Switch_Mode_Target}/{self.Inverter_Switch_Mode}",
             f"Rev Pwr {self.Reverse_Power_Detected} - {self.Reverse_Power_Counter * TIMESTEP}s",
             # f"Off LED {self.Off_LED}",
