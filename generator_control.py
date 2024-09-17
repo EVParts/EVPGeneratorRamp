@@ -4,7 +4,7 @@ import json
 import os
 import sys
 from os.path import join, abspath, dirname, exists
-from pprint import pprint
+from pprint import pprint, pformat
 from time import time, sleep
 
 import dbus
@@ -57,6 +57,10 @@ class GeneratorController():
         self.BMS_Connected = False
         self.relay_states = {}
         self.inverter_delay = 0
+
+
+        self._last_log = {}
+        self.duplicate_log_counter = {}
 
         self.outputs_str = ""
 
@@ -113,7 +117,6 @@ class GeneratorController():
             "Charge_LED": self.read_input('a'),
             "BMS_Wake": self.read_input('b'),
         }
-        pprint({"Inputs": self.input_values}, width=200)
 
 
     def read_input(self, input_no):
@@ -315,7 +318,7 @@ class GeneratorController():
         self.relay_states = {}
         for relay_no in range(2, 10):
             self.relay_states[relay_no] = self.get_dbus_value(f"relay_{relay_no}")
-        pprint({"Relays" : self.relay_states}, width=200)
+
 
     def set_off_led(self):
         if self.Off_LED and self.Fault_Detected:
@@ -419,13 +422,30 @@ class GeneratorController():
                 sleep(5)
                 exit()
             # print(f"{datetime.isoformat(datetime.now())} : {self}", flush=True))
-            print(self, flush=True)
+            self.log_state()
 
             counter+=1
             if counter % 60 == 0:
                 self.snapshot_memory()
 
             sleep(max(0, TIMESTEP - (time() - t0)))
+
+    def log_state(self):
+        log = {"Inputs": self.input_values, "Relays": self.relay_states, "State": str(self)}
+        for log_type in log.keys():
+            if log[log_type] == self._last_log.get(log_type):
+                self.duplicate_log_counter[log_type] = self.duplicate_log_counter.get(log_type, 0) + 1
+            else:
+                self.duplicate_log_counter[log_type] = 0
+            if (log[log_type] != self._last_log.get(log_type)) or ((self.duplicate_log_counter[log_type] % 10) == 0):
+                if isinstance(log[log_type], dict):
+                    print(f"{log_type}: {pformat(log[log_type], width=200)}")
+                else:
+                    print(f"{log_type}: {log[log_type]}".expandtabs(4))
+            else:
+                print(f"{log_type}: No Change")
+            self._last_log[log_type] = log[log_type]
+        sys.stdout.flush()
 
     def snapshot_memory(self):
         if PROFILEMEMORY:
