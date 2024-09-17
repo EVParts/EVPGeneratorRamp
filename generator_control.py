@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import datetime
+import json
 import os
 import sys
 from os.path import join, abspath, dirname
@@ -339,6 +340,11 @@ class GeneratorController():
         self.set_relay(8, self.RCD_Reset_Switch)
         self.set_relay(9, self.Reverse_Power_Alarm)
 
+    def set_led_override(self, off_led, on_led, charge_led):
+        self.set_relay(2, off_led)
+        self.set_relay(3, on_led)
+        self.set_relay(4, charge_led)
+
     def set_inverter_switch_mode(self):
         if self.Inverter_Switch_Mode_Target != self.Inverter_Switch_Mode:  # Only Update the switch mode when it changes.
             if (self.Battery_Contactors_Closed): # Only attempt to contol the inverter if the 48V system has become live already
@@ -377,6 +383,8 @@ class GeneratorController():
             self.Reverse_Power_Alarm = False
 
     def run(self):
+        self.check_stored_state()
+
         self.snapshot_memory()
 
         counter = 0
@@ -397,6 +405,8 @@ class GeneratorController():
 
             if (self.Service_Restart_Requested):
                 print("Service Restart Requested, Going Down in 5s!", flush=True)
+                self.set_led_override(True, True, True)
+                self.store_state()
                 sleep(5)
                 exit()
             # print(f"{datetime.isoformat(datetime.now())} : {self}", flush=True))
@@ -459,6 +469,24 @@ class GeneratorController():
                     print(e, flush=True)
 
 
+    def store_state(self):
+        with open("state_dump.json", 'w') as f:
+            state = {"Mode": self.Mode, "Time": time()}
+            json.dump(state, f)
+
+    def check_stored_state(self):
+        with open("state_dump.json") as f:
+            state = json.load(f)
+            print("Stored state : ", flush=True)
+            pprint(state)
+
+        age = (time() - state.get("Time", 0))
+        if age < 60:
+            mode = state.get("Mode", "Err")
+            print(f"Found a stored state dump which is less than 60s old ({age}s) restoring state : {mode}")
+            self.Mode = mode
+
+
 if __name__ == "__main__":
     if PROFILEMEMORY:
         tracemalloc.start()
@@ -477,5 +505,11 @@ if __name__ == "__main__":
     except Exception as e:
         print("Exception Raised", flush=True)
         print(e, flush=True)
+        print("Restart Required, Going Down in 5s!", flush=True)
+        try:
+            g.set_led_override(True, True, True)
+            sleep(5)
+        except:
+            pass
         raise
 # # Have a mainloop, so we can send/receive asynchronous calls to and from dbus  # DBusGMainLoop(set_as_default=True)
