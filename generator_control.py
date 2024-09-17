@@ -259,10 +259,12 @@ class GeneratorController():
             # print(f"Set DBus Value () : {dbus_item.serviceName} - {dbus_item.path} : {Value}", flush=True))
             try:
                 dbus_item.set_value(value)
+                return True
             except dbus.exceptions.DBusException as e:
                 print(f"Could not set DBUS Item : {dbus_item.serviceName} - {dbus_item.path} : {value}", flush=True)
                 print(e, flush=True)
                 self.clear_dbus_item(dbus_item_name)
+                return False
 
     def clear_dbus_item(self, dbus_item_name):
         print(f"Removing dbus item : {dbus_item_name}", flush=True)
@@ -322,35 +324,45 @@ class GeneratorController():
 
     def set_off_led(self):
         if self.Off_LED and self.Fault_Detected:
-            self.set_relay(2, self._Toggle_State)
+            r = self.set_relay(2, self._Toggle_State)
             self._Toggle_State = not self._Toggle_State
+            return r
         else:
-            self.set_relay(2, self.Off_LED)
+            return self.set_relay(2, self.Off_LED)
 
     def set_on_led(self):
         if self.On_LED and self.Fault_Detected:
-            self.set_relay(3, self._Toggle_State)
+            r = self.set_relay(3, self._Toggle_State)
             self._Toggle_State = not self._Toggle_State
+            return r
         else:
-            self.set_relay(3, self.On_LED)
+            return self.set_relay(3, self.On_LED)
 
     def set_charge_led(self):
         if self.Charge_LED and self.Fault_Detected:
-            self.set_relay(4, self._Toggle_State)
+            r = self.set_relay(4, self._Toggle_State)
             self._Toggle_State = not self._Toggle_State
+            return r
         else:
-            self.set_relay(4, self.Charge_LED)
+            return self.set_relay(4, self.Charge_LED)
 
     def set_outputs(self):
-        self.set_off_led()
-        self.set_on_led()
-        self.set_charge_led()
+        all_ok = True
+        all_ok &= self.set_off_led()
+        all_ok &= self.set_on_led()
+        all_ok &= self.set_charge_led()
 
-        self.set_relay(5, self.BMS_Wake)
-        self.set_relay(6, self.DSE_Remote_Start)
-        self.set_relay(7, self.DSE_Mode_Request)
-        self.set_relay(8, self.RCD_Reset_Switch)
-        self.set_relay(9, self.Reverse_Power_Alarm)
+        all_ok &= self.set_relay(5, self.BMS_Wake)
+        all_ok &= self.set_relay(6, self.DSE_Remote_Start)
+        all_ok &= self.set_relay(7, self.DSE_Mode_Request)
+        all_ok &= self.set_relay(8, self.RCD_Reset_Switch)
+        all_ok &= self.set_relay(9, self.Reverse_Power_Alarm)
+
+        if all_ok:
+            #print("All Relays Set OK")
+        else:
+            print("All Relays not Set OK")
+            raise RuntimeError("Could not control Relays!!!")
 
     def set_led_override(self, off_led, on_led, charge_led):
         self.set_relay(2, off_led)
@@ -377,7 +389,9 @@ class GeneratorController():
             target_value = int(target_value)
         if target_value != self.relay_states.get(relay_no): # Only Update the switch mode when it changes.
             print(f"Setting Relay {relay_no} to {target_value}")
-            self.set_dbus_value(f"relay_{relay_no}", target_value)
+            return self.set_dbus_value(f"relay_{relay_no}", target_value)
+        else:
+            return True
 
 
     def check_reverse_power(self):
