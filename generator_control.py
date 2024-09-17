@@ -3,12 +3,11 @@ import datetime
 import json
 import os
 import sys
-from os.path import join, abspath, dirname
+from os.path import join, abspath, dirname, exists
 from pprint import pprint
 from time import time, sleep
 
 import dbus
-import psutil
 from dbus.mainloop.glib import DBusGMainLoop
 
 # our own packages
@@ -246,6 +245,7 @@ class GeneratorController():
         if (dbus_item := self.dbus_items.get(dbus_item_name)) is not None:
             # print(f"Get DBus Value () : {dbus_item.serviceName} - {dbus_item.path}", flush=True)
             try:
+                assert isinstance(dbus_item.bus, dbus.SessionBus)
                 return unwrap_dbus_value(dbus_item._proxy.GetValue())
             except dbus.exceptions.DBusException as e:
                 print(f"Could not get DBUS Item : {dbus_item.serviceName} - {dbus_item.path}", flush=True)
@@ -320,21 +320,32 @@ class GeneratorController():
 
     def set_off_led(self):
         if (self.Fault_Detected):
-            self.set_dbus_value("relay_2", self._Toggle_State)
+            self.set_relay(2, self._Toggle_State)
             self._Toggle_State = not self._Toggle_State
         else:
-            self.set_dbus_value("relay_2", self.Off_LED)
+            self.set_relay(2, self.Off_LED)
+
+    def set_on_led(self):
+        if self.On_LED:
+            if self.Fault_Detected:
+                self.set_relay(3, self._Toggle_State)
+                self._Toggle_State = not self._Toggle_State
+            else:
+                self.set_relay(3, self.On_LED)
+
+    def set_charge_led(self):
+        if self.Charge_LED:
+            if self.Fault_Detected:
+                self.set_relay(3, self._Toggle_State)
+                self._Toggle_State = not self._Toggle_State
+            else:
+                self.set_relay(3, self.Charge_LED)
 
     def set_outputs(self):
-        if (self.Fault_Detected):
-            self.set_relay(2,  self._Toggle_State)
-            self._Toggle_State = not self._Toggle_State
-        else:
-            self.set_relay(2,  self.Off_LED)
+        self.set_off_led()
+        self.set_on_led()
+        self.set_charge_led()
 
-
-        self.set_relay(3, self.On_LED)
-        self.set_relay(4, self.Charge_LED)
         self.set_relay(5, self.BMS_Wake)
         self.set_relay(6, self.DSE_Remote_Start)
         self.set_relay(7, self.DSE_Mode_Request)
@@ -469,6 +480,9 @@ class GeneratorController():
                     print(f"Could not find DBUS Item - {v['service']} : {v['path']}")
                     print(e, flush=True)
 
+    def system_uptime(self):
+        with open("/proc/uptime") as f:
+            return float(f.read().split()[0])
 
     def store_state(self):
         with open("state_dump.json", 'w') as f:
@@ -476,15 +490,16 @@ class GeneratorController():
             json.dump(state, f)
 
     def check_stored_state(self):
-        with open("state_dump.json") as f:
-            state = json.load(f)
-            print("Stored state : ", flush=True)
-            pprint(state)
+        if exists("state_dump.json"):
+            with open("state_dump.json") as f:
+                state = json.load(f)
+                print("Stored state : ", flush=True)
+                pprint(state)
 
         age = (time() - state.get("Time", 0))
         if age < 60:
             print(f"Found a stored state dump which is less than 60s old ({age}s)")
-            if psutil.boot_time() > state.get("Time", 0):
+            if self.system_uptime() > state.get("Time", 0):
                 print("System reboot detected more recently than stored state, ignoring stored state.")
             else:
                 mode = state.get("Mode", "Err")
