@@ -224,7 +224,7 @@ class GeneratorController():
         else:
             self.Off_Button_Pressed_Counter = 0
 
-        if self.Off_Button_Pressed_Counter >= 10:
+        if self.Off_Button_Pressed_Counter >= 5:
             self.BMS_Disable = True
 
         if self.Off_Button_Pressed and not (self.On_Button_Pressed or self.Charge_Button_Pressed):
@@ -245,7 +245,6 @@ class GeneratorController():
         if (dbus_item := self.dbus_items.get(dbus_item_name)) is not None:
             # print(f"Get DBus Value () : {dbus_item.serviceName} - {dbus_item.path}", flush=True)
             try:
-                assert isinstance(dbus_item.bus, dbus.SessionBus)
                 return unwrap_dbus_value(dbus_item._proxy.GetValue())
             except dbus.exceptions.DBusException as e:
                 print(f"Could not get DBUS Item : {dbus_item.serviceName} - {dbus_item.path}", flush=True)
@@ -319,27 +318,25 @@ class GeneratorController():
         pprint({"Relays" : self.relay_states}, width=200)
 
     def set_off_led(self):
-        if (self.Fault_Detected):
+        if self.Off_LED and self.Fault_Detected:
             self.set_relay(2, self._Toggle_State)
             self._Toggle_State = not self._Toggle_State
         else:
             self.set_relay(2, self.Off_LED)
 
     def set_on_led(self):
-        if self.On_LED:
-            if self.Fault_Detected:
-                self.set_relay(3, self._Toggle_State)
-                self._Toggle_State = not self._Toggle_State
-            else:
-                self.set_relay(3, self.On_LED)
+        if self.On_LED and self.Fault_Detected:
+            self.set_relay(3, self._Toggle_State)
+            self._Toggle_State = not self._Toggle_State
+        else:
+            self.set_relay(3, self.On_LED)
 
     def set_charge_led(self):
-        if self.Charge_LED:
-            if self.Fault_Detected:
-                self.set_relay(3, self._Toggle_State)
-                self._Toggle_State = not self._Toggle_State
-            else:
-                self.set_relay(3, self.Charge_LED)
+        if self.Charge_LED and self.Fault_Detected:
+            self.set_relay(4, self._Toggle_State)
+            self._Toggle_State = not self._Toggle_State
+        else:
+            self.set_relay(4, self.Charge_LED)
 
     def set_outputs(self):
         self.set_off_led()
@@ -496,18 +493,20 @@ class GeneratorController():
                 print("Stored state : ", flush=True)
                 pprint(state)
 
-        age = (time() - state.get("Time", 0))
-        if age < 60:
-            print(f"Found a stored state dump which is less than 60s old ({age}s)")
-            if self.system_uptime() > state.get("Time", 0):
-                print("System reboot detected more recently than stored state, ignoring stored state.")
-            else:
-                mode = state.get("Mode", "Err")
-                if mode not in ["Off", "On", "ChargeOnly"]:
-                    print(f"Unknown Mode detected : {mode}")
+            age = (time() - state.get("Time", 0))
+            if age < 60:
+                print(f"Found a stored state dump which is less than 60s old ({age}s)", flush=True)
+                if self.system_uptime() > state.get("Time", 0):
+                    print("System reboot detected more recently than stored state, ignoring stored state.", flush=True)
                 else:
-                    print(f"Restoring Mode : {mode}")
-                    self.Mode = mode
+                    mode = state.get("Mode", "Err")
+                    if mode not in ["Off", "On", "ChargeOnly"]:
+                        print(f"Unknown Mode detected : {mode}", flush=True)
+                    else:
+                        print(f"Restoring Mode : {mode}", flush=True)
+                        self.Mode = mode
+        else:
+            print("No state_dump.json file detected", flush=True)
 
 
 
