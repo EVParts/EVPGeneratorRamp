@@ -2,6 +2,7 @@
 import datetime
 import json
 import os
+import signal
 import sys
 from os.path import join, abspath, dirname, exists
 from pprint import pprint, pformat
@@ -265,6 +266,8 @@ class GeneratorController():
                 print(e, flush=True)
                 self.clear_dbus_item(dbus_item_name)
                 return False
+        print(f"Dbus Item has been cleared so cannot be set until it is reconnected : {dbus_item_name} ")
+        return False
 
     def clear_dbus_item(self, dbus_item_name):
         print(f"Removing dbus item : {dbus_item_name}", flush=True)
@@ -318,7 +321,11 @@ class GeneratorController():
 
     def update_relay_states(self):
         self.relay_states = {}
-        for relay_no in range(2, 10):
+        self.relay_states[2] = self.Off_LED_Feedback
+        self.relay_states[3] = self.On_LED_Feedback
+        self.relay_states[4] = self.Charge_LED_Feedback
+        self.relay_states[5] = self.BMS_Wake_Feedback
+        for relay_no in range(6, 10):
             self.relay_states[relay_no] = self.get_dbus_value(f"relay_{relay_no}")
 
 
@@ -517,11 +524,14 @@ class GeneratorController():
             return float(f.read().split()[0])
 
     def store_state(self):
+        state = {"Mode": self.Mode, "Time": time()}
+        print("Storing State now ", flush=True)
+        print(state)
         with open("state_dump.json", 'w') as f:
-            state = {"Mode": self.Mode, "Time": time()}
             json.dump(state, f)
 
     def check_stored_state(self):
+        print("Checking stored state")
         if exists("state_dump.json"):
             with open("state_dump.json") as f:
                 state = json.load(f)
@@ -564,10 +574,8 @@ if __name__ == "__main__":
         print("Exception Raised", flush=True)
         print(e, flush=True)
         print("Restart Required, Going Down in 5s!", flush=True)
-        try:
-            g.set_led_override(True, True, True)
-            sleep(5)
-        except:
-            pass
+        g.store_state()
+        g.set_led_override(True, True, True)
+        sleep(5)
         raise
 # # Have a mainloop, so we can send/receive asynchronous calls to and from dbus  # DBusGMainLoop(set_as_default=True)
