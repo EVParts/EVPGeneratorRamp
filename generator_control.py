@@ -244,6 +244,8 @@ class GeneratorController():
         #
         # if (_last_mode != "Off") and (self.Mode != "Off"):
         #     print(self, flush=True)
+        if _last_mode != self.Mode:
+            self.store_state()
 
     def get_dbus_value(self, dbus_item_name: str):
         if (dbus_item := self.dbus_items.get(dbus_item_name)) is not None:
@@ -449,6 +451,8 @@ class GeneratorController():
             counter+=1
             if counter % 60 == 0:
                 self.snapshot_memory()
+            if counter % 30 == 0:
+                self.store_state()
 
             sleep(max(0, TIMESTEP - (time() - t0)))
 
