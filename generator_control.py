@@ -507,9 +507,9 @@ class GeneratorController():
             # f"Relays {self.outputs_str}",
             f"Mode {self.Mode}",
             f"SOC {self.Battery_SOC}%",
-            f"Limits {self.Battery_Charge_Limit}A/{self.Battery_Discharge_Limit}A",
+            f"Lims {self.Battery_Charge_Limit}A/{self.Battery_Discharge_Limit}A",
             f"AC Out {self.AC_Output_Power}W",
-            f"Switch Mode {self.Inverter_Switch_Mode_Target}/{self.Inverter_Switch_Mode}",
+            f"Inv Mode {self.Inverter_Switch_Mode_Target}/{self.Inverter_Switch_Mode}",
             f"Rev Pwr {self.Reverse_Power_Detected} - {self.Reverse_Power_Counter * TIMESTEP}s",
             # f"Off LED {self.Off_LED}",
             # f"On LED {self.On_LED}",
@@ -517,9 +517,9 @@ class GeneratorController():
             # f"BMS Wake {self.BMS_Wake}",
             # f"DSE Start {self.DSE_Remote_Start}",
             # f"DSE Mode {self.DSE_Mode_Request}",
-            f"Inv Delay {self.inverter_delay}s",
+            f"Inv Del {self.inverter_delay}s",
             f"Fault {self.Fault_Detected}",
-            f"off_counter {self.Off_Button_Pressed_Counter}",
+            f"Off Cnt {self.Off_Button_Pressed_Counter}",
         ]
         )
 
