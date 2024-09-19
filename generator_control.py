@@ -250,16 +250,23 @@ class GeneratorController():
     def get_dbus_value(self, dbus_item_name: str):
         if (dbus_item := self.dbus_items.get(dbus_item_name)) is not None:
             # print(f"Get DBus Value () : {dbus_item.serviceName} - {dbus_item.path}", flush=True)
+            t0 = time()
             try:
                 return unwrap_dbus_value(dbus_item._proxy.GetValue())
             except dbus.exceptions.DBusException as e:
                 print(f"Could not get DBUS Item : {dbus_item.serviceName} - {dbus_item.path}", flush=True)
                 print(e, flush=True)
                 self.clear_dbus_item(dbus_item_name)
+                duration = time() - t0
+                timeout = 10
+                if duration > timeout:
+                    print(f"Call took more than {timeout}s, potentially unrecoverable situation! raising exception!")
+                    raise
 
     def set_dbus_value(self, dbus_item_name: str, value):
         if (dbus_item := self.dbus_items.get(dbus_item_name)) is not None:
             # print(f"Set DBus Value () : {dbus_item.serviceName} - {dbus_item.path} : {Value}", flush=True))
+            t0 = time()
             try:
                 dbus_item.set_value(value)
                 return True
@@ -267,6 +274,11 @@ class GeneratorController():
                 print(f"Could not set DBUS Item : {dbus_item.serviceName} - {dbus_item.path} : {value}", flush=True)
                 print(e, flush=True)
                 self.clear_dbus_item(dbus_item_name)
+                duration = time() - t0
+                timeout = 10
+                if duration > timeout:
+                    print(f"Call took more than {timeout}s, potentially unrecoverable situation! raising exception!")
+                    raise
                 return False
         print(f"Dbus Item has been cleared so cannot be set until it is reconnected : {dbus_item_name} ")
         return False
@@ -441,7 +453,6 @@ class GeneratorController():
 
             if (self.Service_Restart_Requested):
                 print("Service Restart Requested, Going Down in 5s!", flush=True)
-                self.set_led_override(True, True, True)
                 self.store_state()
                 sleep(5)
                 exit()
@@ -543,7 +554,7 @@ class GeneratorController():
                 pprint(state)
 
             age = (time() - state.get("Time", 0))
-            if age < 60:
+            if age < 120:
                 print(f"Found a stored state dump which is less than 60s old ({age}s)", flush=True)
                 if self.system_uptime() > state.get("Time", 0):
                     print("System reboot detected more recently than stored state, ignoring stored state.", flush=True)
@@ -568,8 +579,8 @@ if __name__ == "__main__":
         print("\n\n****************************************\n")
         print(f"Running generator_control.py \t{version}", flush=True)
         print("\n****************************************\n\n")
-        print("Waiting 10s for system to startup", flush=True)
-        sleep(10)
+        print("Waiting 5s for system to startup", flush=True)
+        sleep(5)
         print("Running now!", flush=True)
         g = GeneratorController()
         print(g)
@@ -579,7 +590,6 @@ if __name__ == "__main__":
         print(e, flush=True)
         print("Restart Required, Going Down in 5s!", flush=True)
         g.store_state()
-        g.set_led_override(True, True, True)
         sleep(5)
         raise
 # # Have a mainloop, so we can send/receive asynchronous calls to and from dbus  # DBusGMainLoop(set_as_default=True)
