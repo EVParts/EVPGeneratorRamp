@@ -196,12 +196,9 @@ class GeneratorController():
 
     @property
     def Inverter_Switch_Mode_Target(self):
-        if self.Reverse_Power_Alarm:  # Disable the inverter if the Reverse Power Alarm is set
-            return INV_SWITCH_OFF
-        else:
-            modes = {"Off": INV_SWITCH_OFF, "On": INV_SWITCH_ON, "InvertOnly": INV_SWITCH_INVERT_ONLY,
-                     "ChargeOnly": INV_SWITCH_CHARGE_ONLY}
-            return modes.get(self.Mode)
+        modes = {"Off": INV_SWITCH_OFF, "On": INV_SWITCH_ON, "InvertOnly": INV_SWITCH_INVERT_ONLY,
+                 "ChargeOnly": INV_SWITCH_CHARGE_ONLY}
+        return modes.get(self.Mode)
 
     @property
     def Reverse_Power_Detected(self):
@@ -232,6 +229,8 @@ class GeneratorController():
             self.BMS_Disable = True
 
         if self.Off_Button_Pressed and not (self.On_Button_Pressed or self.Charge_Button_Pressed):
+            self.Mode = "Off"
+        elif self.Reverse_Power_Alarm:
             self.Mode = "Off"
         elif self.On_Button_Pressed and not (self.Off_Button_Pressed or self.Charge_Button_Pressed):
             self.Mode = "On"
@@ -417,7 +416,10 @@ class GeneratorController():
 
 
     def check_reverse_power(self):
-        if self.Reverse_Power_Detected:
+        if self.Mode == "Off":
+            self.Reverse_Power_Counter -= 1
+            self.Reverse_Power_Counter = max(0, self.Reverse_Power_Counter)
+        elif self.Reverse_Power_Detected:
             self.Reverse_Power_Counter += 1
             max(REVERSE_POWER_COUNTER_THRESHOLD, self.Reverse_Power_Counter)
         else:
@@ -426,8 +428,7 @@ class GeneratorController():
 
         if (self.Reverse_Power_Counter >= REVERSE_POWER_COUNTER_THRESHOLD):
             self.Reverse_Power_Alarm = True
-        elif (self.Mode == "Off") and (
-                self.Reverse_Power_Counter == 0):  # Only reset if Off and has counted back down to 0
+        elif (self.Reverse_Power_Counter == 0):  # Only reset if has counted back down to 0
             self.Reverse_Power_Alarm = False
 
     def run(self):
@@ -445,7 +446,7 @@ class GeneratorController():
             self.update_battery_limits()
             if self.Mode == "On" or self.Mode == "ChargeOnly":
                 self.update_ac_output_power()
-                self.check_reverse_power()
+            self.check_reverse_power()
             self.update_relay_states()
             self.set_outputs()
             self.update_inverter_switch_mode()
