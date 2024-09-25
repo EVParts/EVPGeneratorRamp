@@ -54,6 +54,7 @@ class GeneratorController():
         self.Inverter_Switch_Mode = 0
         self.Reverse_Power_Counter = 0
         self.Reverse_Power_Alarm = False
+        self.Reverse_Power_Shutdown = False
         self.Inverter_Connected = False
         self.BMS_Connected = False
         self.relay_states = {}
@@ -101,9 +102,10 @@ class GeneratorController():
         if (self.Mode != "Off") and (self.Inverter_Connected == False):
             print("Inverter Fault", flush=True)
             return True
-        if (self.Mode != "Off") and (self.Reverse_Power_Alarm == True):
+        if (self.Reverse_Power_Shutdown == True) or (self.Reverse_Power_Alarm == True):
             print("Reverse Power Fault", flush=True)
             return True
+        return False
 
     # if self.Relays_Connected == False:
     #     return True
@@ -231,13 +233,16 @@ class GeneratorController():
         if self.Off_Button_Pressed and not (self.On_Button_Pressed or self.Charge_Button_Pressed):
             self.Mode = "Off"
         elif self.Reverse_Power_Alarm:
+            self.Reverse_Power_Shutdown = True
             self.Mode = "Off"
         elif self.On_Button_Pressed and not (self.Off_Button_Pressed or self.Charge_Button_Pressed):
             self.Mode = "On"
             self.BMS_Disable = False
+            self.Reverse_Power_Shutdown = False
         elif self.Charge_Button_Pressed and not (self.On_Button_Pressed or self.Off_Button_Pressed):
             self.Mode = "ChargeOnly"
             self.BMS_Disable = False
+            self.Reverse_Power_Shutdown = False
         else:
             pass  # Leave mode unchanged
         #
