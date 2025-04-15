@@ -33,6 +33,13 @@ Remote GPIO needs to be configured to work with the DTWonder relay module.
 #### Ethernet
 Set the IP Address for the Victron to match the IP/subnet of the DTWonder.
 
+###
+Add EVP15KVAGeneratorControl Package Via Github
+In package manager, select Inactive Packages. The choose new and fill in the details.
+EVP15KVAGeneratorControl
+EVParts
+release
+
 
 # TODO 
 Need to get second Ekrano working and then complete the documentation.
