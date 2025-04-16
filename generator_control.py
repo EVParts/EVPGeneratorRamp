@@ -1,10 +1,8 @@
 #!/usr/bin/env python3
-import datetime
 import json
 import os
-import signal
 import sys
-from os.path import join, abspath, dirname, exists
+from os.path import join, dirname, exists
 from pprint import pprint, pformat
 from time import time, sleep
 
@@ -16,8 +14,6 @@ sys.path.insert(1, os.path.join(os.path.dirname(__file__), 'velib_python'))
 
 from vedbus import VeDbusItemImport
 from ve_utils import unwrap_dbus_value
-
-softwareVersion = '1.0'
 
 INV_SWITCH_OFF = 4
 INV_SWITCH_ON = 3
@@ -33,6 +29,13 @@ REVERSE_POWER_COUNTER_THRESHOLD = 10 / TIMESTEP  # 10s
 
 EXCEPTION_THRESHOLD = 10
 
+# Parameters for generator ramp function
+GENSET_INTIAL_RAMP_TIME = 2
+GENSET_WARMUP_TIME = 30
+GENSET_FULLPOWER_RAMP_TIME = 10
+GENSET_WARMUP_CURRENT_LIMIT = 20
+GENSET_FULLPOWER_CURRENT_LIMIT = 30
+
 PROFILEMEMORY = True
 
 if PROFILEMEMORY:
@@ -47,25 +50,26 @@ class GeneratorController():
         self._inverter_switch_mode_update_time = 0
         self.Off_Button_Pressed_Counter = 0
         self.BMS_Disable = False
+        self.DSE_Panel_Lock_Mode_Request = False
         self.Battery_SOC = 0
         self.Battery_Charge_Limit = 0
         self.Battery_Discharge_Limit = 0
         self.AC_Output_Power = None
+        self.AC_InputCurrentLimit = None
         self.Inverter_Switch_Mode = 0
         self.Reverse_Power_Counter = 0
         self.Reverse_Power_Alarm = False
         self.Reverse_Power_Shutdown = False
         self.Inverter_Connected = False
         self.BMS_Connected = False
+        self.input_values = {}
         self.relay_states = {}
         self.inverter_delay = 0
-
 
         self._last_log = {}
         self.duplicate_log_counter = {}
 
         self.outputs_str = ""
-
 
         if PROFILEMEMORY:
             self._initial_snapshot = None
@@ -73,9 +77,13 @@ class GeneratorController():
 
         self.dbus_items_spec = {
             "battery_soc": {"service": "com.victronenergy.system", "path": "/Dc/Battery/Soc"},
-            "battery_charge_limit": {"service": "com.victronenergy.battery.socketcan_vecan0", "path": "/Info/MaxChargeCurrent"},
-            "battery_discharge_limit": {"service": "com.victronenergy.battery.socketcan_vecan0", "path": "/Info/MaxDischargeCurrent"},
+            "battery_charge_limit": {"service": "com.victronenergy.battery.socketcan_vecan0",
+                                     "path": "/Info/MaxChargeCurrent"},
+            "battery_discharge_limit": {"service": "com.victronenergy.battery.socketcan_vecan0",
+                                        "path": "/Info/MaxDischargeCurrent"},
             "ac_output_power":    {"service": "com.victronenergy.vebus.ttyS2", "path": "/Ac/Out/L1/P"},
+            "ac_input_current_limit":    {"service": "com.victronenergy.vebus.ttyS2",
+                                          "path": "/Ac/ActiveIn/CurrentLimit"},
             "inverter_switch_mode": {"service": "com.victronenergy.vebus.ttyS2", "path": "/Mode"},
             "relay_2": {"service": "com.victronenergy.system", "path": "/Relay/2/State"},
             "relay_3": {"service": "com.victronenergy.system", "path": "/Relay/3/State"},
@@ -178,18 +186,11 @@ class GeneratorController():
         return (self.Mode == "On")
 
     @property
-    def DSE_Mode_Request(self):
-        # Mode Request set in "On" and "ChargeOnly" mode
-        return ((self.Mode == "On") or (self.Mode == "ChargeOnly"))
-
-    @property
     def RCD_Reset_Switch(self):
         # If (on and off) or (charge and off) buttons held down then trigger RCD reset relay
         return (
-                ((self.Off_Button_Pressed) and (self.On_Button_Pressed) and not (self.Charge_Button_Pressed)) or
-                ((self.Off_Button_Pressed) and (self.Charge_Button_Pressed) and not (self.On_Button_Pressed))
+                ((self.Off_Button_Pressed) and (self.On_Button_Pressed) and not (self.Charge_Button_Pressed))
         )
-
 
     @property
     def Service_Restart_Requested(self):
@@ -211,10 +212,14 @@ class GeneratorController():
 
     @property
     def Battery_Contactors_Closed(self):
-        val = (self.Battery_Charge_Limit) and (self.Battery_Discharge_Limit) # Non zero current limits means that 48V system is online
+        val = (self.Battery_Charge_Limit) and (self.Battery_Discharge_Limit) # Non-zero current limits means that 48V system is online
         if val == False:
             self.inverter_delay = 0
         return val
+
+    @property
+    def Generator_Start_Requested(self):
+        return self.relay_states[0]
 
     def update_mode(self):
         _last_mode = self.Mode
@@ -230,6 +235,9 @@ class GeneratorController():
         if self.Off_Button_Pressed_Counter >= 5:
             self.BMS_Disable = True
 
+        if ((self.Off_Button_Pressed) and (self.Charge_Button_Pressed) and not (self.On_Button_Pressed)):
+            self.DSE_Panel_Lock_Mode_Request = False
+
         if self.Off_Button_Pressed and not (self.On_Button_Pressed or self.Charge_Button_Pressed):
             self.Mode = "Off"
         elif self.Reverse_Power_Alarm:
@@ -239,10 +247,12 @@ class GeneratorController():
             self.Mode = "On"
             self.BMS_Disable = False
             self.Reverse_Power_Shutdown = False
+            self.DSE_Panel_Lock_Mode_Request = True
         elif self.Charge_Button_Pressed and not (self.On_Button_Pressed or self.Off_Button_Pressed):
             self.Mode = "ChargeOnly"
             self.BMS_Disable = False
             self.Reverse_Power_Shutdown = False
+            self.DSE_Panel_Lock_Mode_Request = True
         else:
             pass  # Leave mode unchanged
         #
@@ -327,6 +337,17 @@ class GeneratorController():
             self.AC_Output_Power = None
             self.clear_dbus_item("ac_output_power")
 
+    def update_ac_input_current_limit(self):
+        val = self.get_dbus_value("ac_input_current_limit")
+        if val is not None:
+            self.Inverter_Connected = True
+            self.AC_InputCurrentLimit = round(val, 1)
+        else:
+            self.Inverter_Connected = False
+            print("Did not receive data from inverter", flush=True)
+            self.AC_InputCurrentLimit = None
+            self.clear_dbus_item("ac_input_current_limit")
+
     def update_inverter_switch_mode(self):
         val = self.get_dbus_value("inverter_switch_mode")
         if val is not None:
@@ -339,6 +360,8 @@ class GeneratorController():
 
     def update_relay_states(self):
         self.relay_states = {}
+        for relay_no in range(0, 2):
+            self.relay_states[relay_no] = self.get_dbus_value(f"relay_{relay_no}")
         self.relay_states[2] = self.Off_LED_Feedback
         self.relay_states[3] = self.On_LED_Feedback
         self.relay_states[4] = self.Charge_LED_Feedback
@@ -379,7 +402,7 @@ class GeneratorController():
 
         all_ok &= self.set_relay(5, self.BMS_Wake)
         all_ok &= self.set_relay(6, self.DSE_Remote_Start)
-        all_ok &= self.set_relay(7, self.DSE_Mode_Request)
+        all_ok &= self.set_relay(7, not self.DSE_Panel_Lock_Mode_Request) # This is wired to the NC contact so the logic is reversed.
         all_ok &= self.set_relay(8, self.RCD_Reset_Switch)
         all_ok &= self.set_relay(9, self.Reverse_Power_Alarm)
 
@@ -433,8 +456,34 @@ class GeneratorController():
 
         if (self.Reverse_Power_Counter >= REVERSE_POWER_COUNTER_THRESHOLD):
             self.Reverse_Power_Alarm = True
-        elif (self.Reverse_Power_Counter == 0):  # Only reset if has counted back down to 0
+        elif (self.Reverse_Power_Counter == 0):  # Only reset if it has counted back down to 0
             self.Reverse_Power_Alarm = False
+
+    def update_generator_ramp_timer(self):
+        if self.relay_states[0]: # relay[0] is the generator remote start signal
+            self.generator_ramp_timer += 1
+        else:
+            self.generator_ramp_timer = 0
+
+    def update_ac_input_current_limit_ramp_target(self):
+        if self.generator_ramp_timer <= GENSET_INTIAL_RAMP_TIME:
+            self.ac_input_current_limit_ramp_target = (self.generator_ramp_timer / GENSET_INTIAL_RAMP_TIME) * GENSET_WARMUP_CURRENT_LIMIT
+        elif self.generator_ramp_timer <= (GENSET_INTIAL_RAMP_TIME + GENSET_WARMUP_TIME):
+            self.ac_input_current_limit_ramp_target = GENSET_WARMUP_CURRENT_LIMIT
+        elif self.generator_ramp_timer <= (GENSET_INTIAL_RAMP_TIME + GENSET_WARMUP_TIME + GENSET_FULLPOWER_RAMP_TIME):
+            self.ac_input_current_limit_ramp_target = ((self.generator_ramp_timer - GENSET_INTIAL_RAMP_TIME + GENSET_WARMUP_TIME) / GENSET_FULLPOWER_RAMP_TIME) * GENSET_FULLPOWER_CURRENT_LIMIT
+        else:
+            self.ac_input_current_limit_ramp_target = GENSET_FULLPOWER_CURRENT_LIMIT
+
+    def set_ac_input_current_limit(self):
+        if self.AC_InputCurrentLimit != self.ac_input_current_limit_ramp_target:  # Only Update the current limit when target changes.
+            if (self.Battery_Contactors_Closed): # Only attempt to contol the inverter if the 48V system has become live already
+                if self.inverter_delay == 0:
+                    self.set_dbus_value("ac_input_current_limit", self.Inverter_Switch_Mode_Target)
+                    print(f"Updating switch mode from {self.Inverter_Switch_Mode} to {self.Inverter_Switch_Mode_Target}.", flush=True)
+                else:
+                    print(f"Waiting {self.inverter_delay}s before activating the inverter")
+                    # inverter_delay is decremented elsewhere.
 
     def run(self):
         self.check_stored_state()
@@ -451,11 +500,14 @@ class GeneratorController():
             self.update_battery_limits()
             if self.Mode == "On" or self.Mode == "ChargeOnly":
                 self.update_ac_output_power()
+                self.update_ac_input_current_limit()
             self.check_reverse_power()
             self.update_relay_states()
             self.set_outputs()
             self.update_inverter_switch_mode()
             self.set_inverter_switch_mode()
+            self.update_ac_input_current_limit_ramp_target()
+            self.set_ac_input_current_limit()
 
             if (self.Service_Restart_Requested):
                 print("Service Restart Requested, Going Down in 5s!", flush=True)
@@ -515,6 +567,7 @@ class GeneratorController():
             f"SOC {self.Battery_SOC}%",
             f"Lims {self.Battery_Charge_Limit}A/{self.Battery_Discharge_Limit}A",
             f"AC Out {self.AC_Output_Power}W",
+            f"AC In Curr Lim {self.AC_InputCurrentLimit}A",
             f"Inv Mode {self.Inverter_Switch_Mode_Target}/{self.Inverter_Switch_Mode}",
             f"Rev Pwr {self.Reverse_Power_Detected} - {self.Reverse_Power_Counter * TIMESTEP}s",
             # f"Off LED {self.Off_LED}",
@@ -580,8 +633,8 @@ if __name__ == "__main__":
     if PROFILEMEMORY:
         tracemalloc.start()
     try:
-        with open(join(dirname(__file__), "version")) as f:
-            version = f.readline()
+        with open(join(dirname(__file__), "version")) as f_version:
+            version = f_version.readline()
         print("\n\n****************************************\n")
         print(f"Running generator_control.py \t{version}", flush=True)
         print("\n****************************************\n\n")
