@@ -85,7 +85,7 @@ class GeneratorController():
                                         "path": "/Info/MaxDischargeCurrent"},
             "ac_output_power":    {"service": "com.victronenergy.vebus.ttyS2", "path": "/Ac/Out/L1/P"},
             "ac_input_current_limit":    {"service": "com.victronenergy.vebus.ttyS2",
-                                          "path": "/Ac/ActiveIn/CurrentLimit"},
+                                          "path": "/Ac/In/1/CurrentLimit"},
             "inverter_switch_mode": {"service": "com.victronenergy.vebus.ttyS2", "path": "/Mode"},
             "relay_2": {"service": "com.victronenergy.system", "path": "/Relay/2/State"},
             "relay_3": {"service": "com.victronenergy.system", "path": "/Relay/3/State"},
