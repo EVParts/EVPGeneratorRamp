@@ -30,11 +30,11 @@ REVERSE_POWER_COUNTER_THRESHOLD = 10 / TIMESTEP  # 10s
 EXCEPTION_THRESHOLD = 10
 
 # Parameters for generator ramp function
-GENSET_INTIAL_RAMP_TIME = 2
+GENSET_INTIAL_RAMP_TIME = 5
 GENSET_WARMUP_TIME = 30
 GENSET_FULLPOWER_RAMP_TIME = 10
 GENSET_WARMUP_CURRENT_LIMIT = 20
-GENSET_FULLPOWER_CURRENT_LIMIT = 30
+GENSET_FULLPOWER_CURRENT_LIMIT = 50
 
 PROFILEMEMORY = True
 
@@ -475,7 +475,7 @@ class GeneratorController():
         elif self.generator_ramp_timer <= (GENSET_INTIAL_RAMP_TIME + GENSET_WARMUP_TIME):
             self.ac_input_current_limit_ramp_target = GENSET_WARMUP_CURRENT_LIMIT
         elif self.generator_ramp_timer <= (GENSET_INTIAL_RAMP_TIME + GENSET_WARMUP_TIME + GENSET_FULLPOWER_RAMP_TIME):
-            self.ac_input_current_limit_ramp_target = ((self.generator_ramp_timer - GENSET_INTIAL_RAMP_TIME + GENSET_WARMUP_TIME) / GENSET_FULLPOWER_RAMP_TIME) * GENSET_FULLPOWER_CURRENT_LIMIT
+            self.ac_input_current_limit_ramp_target = ((self.generator_ramp_timer - (GENSET_INTIAL_RAMP_TIME + GENSET_WARMUP_TIME)) / GENSET_FULLPOWER_RAMP_TIME) * GENSET_FULLPOWER_CURRENT_LIMIT
         else:
             self.ac_input_current_limit_ramp_target = GENSET_FULLPOWER_CURRENT_LIMIT
 
