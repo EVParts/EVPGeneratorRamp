@@ -475,7 +475,7 @@ class GeneratorController():
         elif self.generator_ramp_timer <= (GENSET_INTIAL_RAMP_TIME + GENSET_WARMUP_TIME):
             self.ac_input_current_limit_ramp_target = GENSET_WARMUP_CURRENT_LIMIT
         elif self.generator_ramp_timer <= (GENSET_INTIAL_RAMP_TIME + GENSET_WARMUP_TIME + GENSET_FULLPOWER_RAMP_TIME):
-            self.ac_input_current_limit_ramp_target = ((self.generator_ramp_timer - (GENSET_INTIAL_RAMP_TIME + GENSET_WARMUP_TIME)) / GENSET_FULLPOWER_RAMP_TIME) * GENSET_FULLPOWER_CURRENT_LIMIT
+            self.ac_input_current_limit_ramp_target = ((self.generator_ramp_timer - (GENSET_INTIAL_RAMP_TIME + GENSET_WARMUP_TIME)) / GENSET_FULLPOWER_RAMP_TIME) * (GENSET_FULLPOWER_CURRENT_LIMIT - GENSET_WARMUP_CURRENT_LIMIT) + GENSET_WARMUP_CURRENT_LIMIT
         else:
             self.ac_input_current_limit_ramp_target = GENSET_FULLPOWER_CURRENT_LIMIT
 
