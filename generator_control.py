@@ -66,6 +66,7 @@ class GeneratorController():
         self.relay_states = {}
         self.inverter_delay = 0
         self.generator_ramp_timer = 0
+        self.ac_input_current_limit_ramp_target = 0
 
         self._last_log = {}
         self.duplicate_log_counter = {}
