@@ -510,6 +510,7 @@ class GeneratorController():
             self.set_outputs()
             self.update_inverter_switch_mode()
             self.set_inverter_switch_mode()
+            self.update_generator_ramp_timer()
             self.update_ac_input_current_limit_ramp_target()
             self.set_ac_input_current_limit()
 
