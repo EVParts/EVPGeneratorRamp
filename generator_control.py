@@ -480,10 +480,10 @@ class GeneratorController():
         if self.AC_InputCurrentLimit != self.ac_input_current_limit_ramp_target:  # Only Update the current limit when target changes.
             if (self.Battery_Contactors_Closed): # Only attempt to contol the inverter if the 48V system has become live already
                 if self.inverter_delay == 0:
-                    self.set_dbus_value("ac_input_current_limit", self.Inverter_Switch_Mode_Target)
-                    print(f"Updating switch mode from {self.Inverter_Switch_Mode} to {self.Inverter_Switch_Mode_Target}.", flush=True)
+                    self.set_dbus_value("ac_input_current_limit", self.ac_input_current_limit_ramp_target)
+                    print(f"Updating AC Current Limit from {self.AC_InputCurrentLimit} to {self.ac_input_current_limit_ramp_target}.", flush=True)
                 else:
-                    print(f"Waiting {self.inverter_delay}s before activating the inverter")
+                    print(f"Waiting {self.inverter_delay}s before updating ac input current limit")
                     # inverter_delay is decremented elsewhere.
 
     def run(self):
@@ -569,6 +569,7 @@ class GeneratorController():
             f"Lims {self.Battery_Charge_Limit}A/{self.Battery_Discharge_Limit}A",
             f"AC Out {self.AC_Output_Power}W",
             f"AC In Curr Lim {self.AC_InputCurrentLimit}A",
+            f"Target {self.ac_input_current_limit_ramp_target}A",
             f"Inv Mode {self.Inverter_Switch_Mode_Target}/{self.Inverter_Switch_Mode}",
             f"Rev Pwr {self.Reverse_Power_Detected} - {self.Reverse_Power_Counter * TIMESTEP}s",
             # f"Off LED {self.Off_LED}",
