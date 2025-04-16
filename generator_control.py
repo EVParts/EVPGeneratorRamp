@@ -464,14 +464,14 @@ class GeneratorController():
             self.Reverse_Power_Alarm = False
 
     def update_generator_ramp_timer(self):
-        if self.relay_states[0]: # relay[0] is the generator remote start signal
+        if self.relay_states[0] : # relay[0] is the generator remote start signal
             self.generator_ramp_timer += 1
         else:
             self.generator_ramp_timer = 0
 
     def update_ac_input_current_limit_ramp_target(self):
         if self.generator_ramp_timer <= GENSET_INTIAL_RAMP_TIME:
-            self.ac_input_current_limit_ramp_target = (self.generator_ramp_timer / GENSET_INTIAL_RAMP_TIME) * GENSET_WARMUP_CURRENT_LIMIT
+            self.ac_input_current_limit_ramp_target = max(1, (self.generator_ramp_timer / GENSET_INTIAL_RAMP_TIME) * GENSET_WARMUP_CURRENT_LIMIT)
         elif self.generator_ramp_timer <= (GENSET_INTIAL_RAMP_TIME + GENSET_WARMUP_TIME):
             self.ac_input_current_limit_ramp_target = GENSET_WARMUP_CURRENT_LIMIT
         elif self.generator_ramp_timer <= (GENSET_INTIAL_RAMP_TIME + GENSET_WARMUP_TIME + GENSET_FULLPOWER_RAMP_TIME):
@@ -542,7 +542,8 @@ class GeneratorController():
                 else:
                     print(f"{log_type}: {log[log_type]}".expandtabs(4))
             else:
-                print(f"{log_type}: No Change")
+                # print(f"{log_type}: No Change")
+                pass
             self._last_log[log_type] = log[log_type]
         sys.stdout.flush()
 
