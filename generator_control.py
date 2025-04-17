@@ -29,8 +29,9 @@ REVERSE_POWER_COUNTER_THRESHOLD = 10 / TIMESTEP  # 10s
 
 EXCEPTION_THRESHOLD = 10
 
+# TODO Update the ramp function to look for the AC input 1 voltage to stabilise before beginning the timer.
 # Parameters for generator ramp function
-GENSET_INTIAL_RAMP_TIME = 5
+GENSET_INTIAL_RAMP_TIME = 5 # May need to increase this as it takes a while for the DSE to actually start after signal
 GENSET_WARMUP_TIME = 30
 GENSET_FULLPOWER_RAMP_TIME = 10
 GENSET_WARMUP_CURRENT_LIMIT = 20
