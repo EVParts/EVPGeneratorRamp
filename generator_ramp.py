@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
+import json
 import os
 import sys
-from os.path import join, dirname
-from pprint import pformat
+from os.path import join, dirname, exists
+from pprint import pformat, pprint
 from time import time, sleep
 
 import dbus
@@ -27,11 +28,25 @@ EXCEPTION_THRESHOLD = 10
 
 # TODO Update the ramp function to look for the AC input 1 voltage to stabilise before beginning the timer.
 # Parameters for generator ramp function
-GENSET_INITIAL_RAMP_TIME = 5
-GENSET_WARMUP_TIME = 30
+GENSET_INITIAL_LIMIT = 3
+GENSET_INITIAL_RAMP_TIME = 30
+GENSET_WARMUP_TIME = 60
 GENSET_FULLPOWER_RAMP_TIME = 10
-GENSET_WARMUP_CURRENT_LIMIT = 20
-GENSET_FULLPOWER_CURRENT_LIMIT = 35
+GENSET_WARMUP_CURRENT_LIMIT = 12
+GENSET_STANDBY_CURRENT_LIMIT = 34
+GENSET_STANDBY_RAMP_TIME = 120
+GENSET_PRIME_CURRENT_LIMIT = 40
+GENSET_PRIME_RAMP_TIME = 30*60
+
+STATE_INV_OFF = 0
+STATE_INV_ON = 1
+STATE_START_REQD = 2
+STATE_AC_STABLE = 3
+STATE_INITIAL_RAMP = 4
+STATE_WARMUP = 5
+STATE_STANDBY_RAMP = 6
+STATE_PRIME_RAMP = 7
+STATE_STEADYSTATE = 8
 
 PROFILE_MEMORY = True
 
@@ -43,15 +58,23 @@ class GeneratorRampController:
     def __init__(self):
         DBusGMainLoop(set_as_default=True)
         self.dbusConn = dbus.SessionBus() if 'DBUS_SESSION_BUS_ADDRESS' in os.environ else dbus.SystemBus()
-        self.Battery_Charge_Limit = 0
-        self.Battery_Discharge_Limit = 0
-        self.AC_InputCurrentLimit = None
-        self.Inverter_Switch_Mode = 0
-        self.Inverter_Connected = False
-        self.BMS_Connected = False
+        self.battery_charge_current_limit = 0
+        self.battery_discharge_current_limit = 0
+        self.ac_input_current_limit = None
+        self.ac_input_current = 0
+        self.inverter_switch_mode = 0
+        self.inverter_connected = False
+        self.BMS_connected = False
         self.inverter_delay = 0
-        self.generator_ramp_timer = 0
-        self.ac_input_current_limit_ramp_target = 0
+
+        self.generator_ramp_state = STATE_INV_OFF
+
+
+        self.generator_ramp_state = STATE_INV_OFF
+        self.tick_time = time()
+        self.generator_state_entry_time = time()
+        self.generator_stall_counter = 0
+        self.ac_input_curr_limit_target = 0
         self.relay_states = {}
 
         self._last_log = {}
@@ -74,11 +97,11 @@ class GeneratorRampController:
                                           "path": "/Ac/In/1/CurrentLimit"},
             "inverter_switch_mode": {"service": "com.victronenergy.vebus.ttyS2", "path": "/Mode"},
             "relay_0": {"service": "com.victronenergy.system", "path": "/Relay/0/State"},
-            "GenSS-Type": {"service": "com.victronenergy.generator.startstop0", "path": "Type"},
-            "GenSS-Connected": {"service": "com.victronenergy.generator.startstop0", "path": "Connected"},
-            "ac_input1_V": {"service": "com.victronenergy.vebus.ttyS2", "path": "Ac/ActiveIn/L1/V"},
-            "ac_input1_f": {"service": "com.victronenergy.vebus.ttyS2", "path": "Ac/ActiveIn/L1/I"},
-            "ac_input1_I": {"service": "com.victronenergy.vebus.ttyS2", "path": "Ac/ActiveIn/L1/F"},
+            # "GenSS-Type": {"service": "com.victronenergy.generator.startstop0", "path": "/Type"},
+            # "GenSS-Connected": {"service": "com.victronenergy.generator.startstop0", "path": "/Connected"},
+            # "ac_input1_V": {"service": "com.victronenergy.vebus.ttyS2", "path": "/Ac/ActiveIn/L1/V"},
+            "ac_input1_I": {"service": "com.victronenergy.vebus.ttyS2", "path": "/Ac/ActiveIn/L1/I"},
+            # "ac_input1_f": {"service": "com.victronenergy.vebus.ttyS2", "path": "/Ac/ActiveIn/L1/F"},
 
                                        }
 
@@ -87,11 +110,15 @@ class GeneratorRampController:
         self.check_and_create_connections()
 
     @property
+    def generator_state_time(self):
+        return self.tick_time - self.generator_state_entry_time
+
+    @property
     def Fault_Detected(self):
-        if not self.BMS_Connected:
+        if not self.BMS_connected:
             print("BMS Fault", flush=True)
             return True
-        if (self.Inverter_Switch_Mode != INV_SWITCH_OFF) and (not self.Inverter_Connected):
+        if (self.inverter_switch_mode != INV_SWITCH_OFF) and (not self.inverter_connected):
             print("Inverter Fault", flush=True)
             return True
         return False
@@ -102,12 +129,12 @@ class GeneratorRampController:
     #     return ((self.Off_Button_Pressed) and (self.On_Button_Pressed) and (self.Charge_Button_Pressed))
 
     @property
-    def Generator_Start_Requested(self):
+    def generator_start_requested(self):
         return self.relay_states[0]
 
     @property
     def Battery_Contactors_Closed(self):
-        val = (self.Battery_Charge_Limit) and (self.Battery_Discharge_Limit) # Non-zero current limits means that 48V system is online
+        val = (self.battery_charge_current_limit) and (self.battery_discharge_current_limit) # Non-zero current limits means that 48V system is online
         if val is False:
             self.inverter_delay = 0
         return val
@@ -160,86 +187,179 @@ class GeneratorRampController:
         charge_lim = self.get_dbus_value("battery_charge_limit")
         discharge_lim = self.get_dbus_value("battery_discharge_limit")
         if (charge_lim is not None) and (discharge_lim is not None):
-            self.BMS_Connected = True
-            self.Battery_Charge_Limit = round(charge_lim, 1)
-            self.Battery_Discharge_Limit = round(discharge_lim, 1)
+            self.BMS_connected = True
+            self.battery_charge_current_limit = round(charge_lim, 1)
+            self.battery_discharge_current_limit = round(discharge_lim, 1)
         else:
-            self.BMS_Connected = False
+            self.BMS_connected = False
             print("Did not receive data from battery about current limits", flush=True)
 
     def update_ac_input_current_limit(self):
         val = self.get_dbus_value("ac_input_current_limit")
         if val is not None:
-            self.Inverter_Connected = True
-            self.AC_InputCurrentLimit = round(val, 1)
+            self.inverter_connected = True
+            self.ac_input_current_limit = round(val, 1)
         else:
-            self.Inverter_Connected = False
+            self.inverter_connected = False
             print("Did not receive data from inverter", flush=True)
-            self.AC_InputCurrentLimit = None
+            self.ac_input_current_limit = None
             self.clear_dbus_item("ac_input_current_limit")
 
     def update_inverter_switch_mode(self):
         val = self.get_dbus_value("inverter_switch_mode")
         if val is not None:
-            self.Inverter_Connected = True
-            self.Inverter_Switch_Mode = val
+            self.inverter_connected = True
+            self.inverter_switch_mode = val
         else:
-            self.Inverter_Connected = False
+            self.inverter_connected = False
             print("Did not receive switch mode from inverter", flush=True)
-            self.Inverter_Switch_Mode = 0
+            self.inverter_switch_mode = 0
 
     def update_relay_states(self):
         self.relay_states = {
             0: self.get_dbus_value(f"relay_0")
         }
 
+    def update_ac_input_current(self):
+        self.ac_input_current = self.get_dbus_value("ac_input1_I")
+
     def update_logged_vars(self):
         for k, v in self.dbus_items_spec.items():
             self.logged_vars[k] = self.get_dbus_value(k)
 
-    def update_generator_ramp_timer(self):
-        if self.relay_states[0]: # relay[0] is the generator remote start signal
-            self.generator_ramp_timer += 1
-        else:
-            self.generator_ramp_timer = 0
-
-    def update_ac_input_current_limit_ramp_target(self):
-        if self.generator_ramp_timer <= GENSET_INITIAL_RAMP_TIME:
-            self.ac_input_current_limit_ramp_target = max(1.0, (self.generator_ramp_timer / GENSET_INITIAL_RAMP_TIME) * GENSET_WARMUP_CURRENT_LIMIT)
-        elif self.generator_ramp_timer <= (GENSET_INITIAL_RAMP_TIME + GENSET_WARMUP_TIME):
-            self.ac_input_current_limit_ramp_target = GENSET_WARMUP_CURRENT_LIMIT
-        elif self.generator_ramp_timer <= (GENSET_INITIAL_RAMP_TIME + GENSET_WARMUP_TIME + GENSET_FULLPOWER_RAMP_TIME):
-            self.ac_input_current_limit_ramp_target = ((self.generator_ramp_timer - (GENSET_INITIAL_RAMP_TIME + GENSET_WARMUP_TIME)) / GENSET_FULLPOWER_RAMP_TIME) * (GENSET_FULLPOWER_CURRENT_LIMIT - GENSET_WARMUP_CURRENT_LIMIT) + GENSET_WARMUP_CURRENT_LIMIT
-        else:
-            self.ac_input_current_limit_ramp_target = GENSET_FULLPOWER_CURRENT_LIMIT
-
     def set_ac_input_current_limit(self):
-        if self.AC_InputCurrentLimit != self.ac_input_current_limit_ramp_target:  # Only Update the current limit when target changes.
+        if self.ac_input_current_limit != self.ac_input_curr_limit_target:  # Only Update the current limit when target changes.
             if (self.Battery_Contactors_Closed):  # Only attempt to contol the inverter if the 48V system has become live already
                 if self.inverter_delay == 0:
-                    self.set_dbus_value("ac_input_current_limit", self.ac_input_current_limit_ramp_target)
-                    print(f"Updating AC Current Limit from {self.AC_InputCurrentLimit} to {self.ac_input_current_limit_ramp_target}.", flush=True)
+                    self.set_dbus_value("ac_input_current_limit", self.ac_input_curr_limit_target)
+                    print(f"Updating AC Current Limit from {self.ac_input_current_limit} to {self.ac_input_curr_limit_target}.", flush=True)
                 else:
                     print(f"Waiting {self.inverter_delay}s before updating ac input current limit")
                     # inverter_delay is decremented elsewhere.
 
+    def update_ramp_state_machine(self):
+        incoming_state = self.generator_ramp_state
+
+        if self.generator_ramp_state == STATE_INV_OFF:
+            if self.inverter_connected:
+                self.generator_ramp_state = STATE_INV_ON
+
+        elif self.generator_ramp_state == STATE_INV_ON:
+            if self.inverter_connected == False:
+                self.generator_ramp_state = STATE_INV_OFF
+            elif self.generator_start_requested == True:
+                self.generator_ramp_state = STATE_START_REQD
+
+        elif self.generator_ramp_state == STATE_START_REQD:
+            if self.inverter_connected == False:
+                self.generator_ramp_state = STATE_INV_OFF
+            elif self.generator_start_requested == False:
+                self.generator_ramp_state = STATE_INV_ON
+            elif self.ac_input_current > GENSET_INITIAL_LIMIT / 2.0:
+                self.generator_ramp_state = STATE_INITIAL_RAMP
+
+            self.ac_input_curr_limit_target = GENSET_INITIAL_LIMIT
+
+        elif self.generator_ramp_state == STATE_INITIAL_RAMP:
+            if self.inverter_connected == False:
+                self.generator_ramp_state = STATE_INV_OFF
+            elif self.generator_start_requested == False:
+                self.generator_ramp_state = STATE_INV_ON
+            elif self.generator_state_entry_time > GENSET_INITIAL_RAMP_TIME:
+                self.generator_ramp_state = STATE_WARMUP
+            elif self.ac_input_current == 0.0:
+                self.generator_ramp_state = STATE_INV_ON
+                self.generator_stall_counter += 1
+
+            self.ac_input_curr_limit_target = self.ramp_calc(self.generator_state_time, GENSET_INITIAL_RAMP_TIME,
+                                                             GENSET_INITIAL_LIMIT, GENSET_WARMUP_CURRENT_LIMIT)
+
+        elif self.generator_ramp_state == STATE_WARMUP:
+            if self.inverter_connected == False:
+                self.generator_ramp_state = STATE_INV_OFF
+            elif self.generator_start_requested == False:
+                self.generator_ramp_state = STATE_INV_ON
+            elif self.generator_state_entry_time > GENSET_WARMUP_TIME:
+                self.generator_ramp_state = STATE_STANDBY_RAMP
+            elif self.ac_input_current == 0.0:
+                self.generator_ramp_state = STATE_INV_ON
+                self.generator_stall_counter += 1
+
+            self.ac_input_curr_limit_target = GENSET_WARMUP_CURRENT_LIMIT
+
+        elif self.generator_ramp_state == STATE_STANDBY_RAMP:
+            if self.inverter_connected == False:
+                self.generator_ramp_state = STATE_INV_OFF
+            elif self.generator_start_requested == False:
+                self.generator_ramp_state = STATE_INV_ON
+            elif self.generator_state_entry_time > GENSET_STANDBY_RAMP_TIME:
+                self.generator_ramp_state = STATE_PRIME_RAMP
+            elif self.ac_input_current == 0.0:
+                self.generator_ramp_state = STATE_INV_ON
+                self.generator_stall_counter += 1
+
+            self.ac_input_curr_limit_target = self.ramp_calc(self.generator_state_time, GENSET_WARMUP_TIME,
+                                                             GENSET_WARMUP_CURRENT_LIMIT, GENSET_STANDBY_CURRENT_LIMIT)
+
+        elif self.generator_ramp_state == STATE_PRIME_RAMP:
+            if self.inverter_connected == False:
+                self.generator_ramp_state = STATE_INV_OFF
+            elif self.generator_start_requested == False:
+                self.generator_ramp_state = STATE_INV_ON
+            elif self.generator_state_entry_time > GENSET_PRIME_RAMP_TIME:
+                self.generator_ramp_state = STATE_STEADYSTATE
+            elif self.ac_input_current == 0.0:
+                self.generator_ramp_state = STATE_INV_ON
+                self.generator_stall_counter += 1
+
+            self.ac_input_curr_limit_target = self.ramp_calc(self.generator_state_time, GENSET_WARMUP_TIME,
+                                                             GENSET_STANDBY_CURRENT_LIMIT, GENSET_PRIME_CURRENT_LIMIT)
+
+        elif self.generator_ramp_state == STATE_STEADYSTATE:
+            if self.inverter_connected == False:
+                self.generator_ramp_state = STATE_INV_OFF
+            elif self.generator_start_requested == False:
+                self.generator_ramp_state = STATE_INV_ON
+            elif self.ac_input_current == 0.0:
+                self.generator_ramp_state = STATE_INV_ON
+
+            self.ac_input_curr_limit_target = GENSET_PRIME_CURRENT_LIMIT
+
+        else:
+            pass
+
+
+        # If we change state then reset the state timer.
+        new_state = self.generator_ramp_state
+        if new_state != incoming_state:
+            self.generator_state_entry_time = time()
+            self.store_state()
+
+    def ramp_calc(self, curr_time, duration, start_val, stop_val):
+        curr_time = max(0.0, curr_time)
+        frac = curr_time / duration
+        frac = min(1.0, frac)
+        frac = max(0.0, frac)
+        return start_val + ((stop_val - start_val) * frac)
+
     def run(self):
+        self.check_stored_state()
+
         self.snapshot_memory()
 
         counter = 0
         while True:
-            t0 = time()
+            self.tick_time = time()
             self.check_and_create_connections()
 
-            self.update_logged_vars()
-            self.log_dbus_vals()
-            # self.update_inverter_switch_mode()
-            # if self.Inverter_Switch_Mode == INV_SWITCH_ON or self.Inverter_Switch_Mode == INV_SWITCH_CHARGE_ONLY:
-            #     self.update_ac_input_current_limit()
-            # self.update_relay_states()
-            # self.update_generator_ramp_timer()
-            # self.update_ac_input_current_limit_ramp_target()
-            # self.set_ac_input_current_limit()
+            if (self.Inverter_Switch_Mode == INV_SWITCH_ON) or (self.Inverter_Switch_Mode == INV_SWITCH_CHARGE_ONLY):
+                self.update_ac_input_current_limit()
+            self.update_relay_states()
+            self.update_ac_input_current()
+            self.update_inverter_switch_mode()
+
+            self.update_ramp_state_machine()
+            self.set_ac_input_current_limit()
 
             # if (self.Service_Restart_Requested):
             #     print("Service Restart Requested, Going Down in 5s!", flush=True)
@@ -247,15 +367,13 @@ class GeneratorRampController:
             #     sleep(5)
             #     exit()
             # print(f"{datetime.isoformat(datetime.now())} : {self}", flush=True))
-            # self.log_state()
+            self.log_state()
 
             counter += 1
             if counter % 60 == 0:
                 self.snapshot_memory()
-            # if counter % 30 == 0:
-            #     self.store_state()
 
-            sleep(max(0.0, TIMESTEP - (time() - t0)))
+            sleep(max(0.0, TIMESTEP - (time() - self.tick_time)))
 
     def log_dbus_vals(self):
         print(f"DBUS: {pformat(self.logged_vars, width=200)}")
@@ -299,13 +417,17 @@ class GeneratorRampController:
 
     def __repr__(self):
         return ',\t'.join([
-            f"Inv Mode {self.Inverter_Switch_Mode}",
-            f"Lims {self.Battery_Charge_Limit}A/{self.Battery_Discharge_Limit}A",
-            f"AC In Curr Lim {self.AC_InputCurrentLimit}A",
-            f"Target {self.ac_input_current_limit_ramp_target}A",
-            f"Gen Ramp {self.generator_ramp_timer}s",
+            f"State {self.generator_ramp_state}",
+            f"Inv Mode {self.inverter_switch_mode}",
+            f"BMS Lims {self.battery_charge_current_limit}A/{self.battery_discharge_current_limit}A",
+            f"Gen Start {self.generator_start_requested}",
+            f"AC In Curr {self.ac_input_current}A",
+            f"AC In Curr Lim {self.ac_input_current_limit}A",
+            f"Target {self.ac_input_curr_limit_target}A",
+            f"Gen Ramp {time() - self.generator_state_entry_time}s",
             f"Inv Del {self.inverter_delay}s",
             f"Fault {self.Fault_Detected}",
+            f"Stall Count {self.generator_stall_counter}",
         ]
         )
 
@@ -320,38 +442,44 @@ class GeneratorRampController:
                     print(f"Could not find DBUS Item - {v['service']} : {v['path']}")
                     print(e, flush=True)
 
-    # def system_uptime(self):
-    #     with open("/proc/uptime") as f:
-    #         return float(f.read().split()[0])
+    def system_uptime(self):
+        with open("/proc/uptime") as f:
+            return float(f.read().split()[0])
 
-    # def store_state(self):
-    #     state = {"Mode": self.Mode, "Time": time()}
-    #     print("Storing State now ", flush=True)
-    #     print(state)
-    #     with open("state_dump.json", 'w') as f:
-    #         json.dump(state, f)
-    # def check_stored_state(self):
-    #     print("Checking stored state")
-    #     if exists("state_dump.json"):
-    #         with open("state_dump.json") as f:
-    #             state = json.load(f)
-    #             print("Stored state : ", flush=True)
-    #             pprint(state)
-    #
-    #         age = (time() - state.get("Time", 0))
-    #         if age < 120:
-    #             print(f"Found a stored state dump which is less than 60s old ({age}s)", flush=True)
-    #             if self.system_uptime() > state.get("Time", 0):
-    #                 print("System reboot detected more recently than stored state, ignoring stored state.",flush=True)
-    #             else:
-    #                 mode = state.get("Mode", "Err")
-    #                 if mode not in ["Off", "On", "ChargeOnly"]:
-    #                     print(f"Unknown Mode detected : {mode}", flush=True)
-    #                 else:
-    #                     print(f"Restoring Mode : {mode}", flush=True)
-    #                     self.Mode = mode
-    #     else:
-    #         print("No state_dump.json file detected", flush=True)
+    def store_state(self):
+        state = {"State": self.generator_ramp_state, "StateEntryTime": self.generator_state_entry_time, "Time": time()}
+        print("Storing State now ", flush=True)
+        print(state)
+        with open("state_dump.json", 'w') as f:
+            json.dump(state, f)
+    def check_stored_state(self):
+        print("Checking stored state")
+        if exists("state_dump.json"):
+            with open("state_dump.json") as f:
+                state = json.load(f)
+                print("Stored state : ", flush=True)
+                pprint(state)
+
+            age = (time() - state.get("Time", 0))
+            if age < 120:
+                print(f"Found a stored state dump which is less than 60s old ({age}s)", flush=True)
+                if self.system_uptime() > state.get("Time", 0):
+                    print("System reboot detected more recently than stored state, ignoring stored state.",flush=True)
+                else:
+                    ramp_state = state.get("State", 0)
+                    if ramp_state > STATE_STEADYSTATE:
+                        print(f"Unknown State detected : {ramp_state}", flush=True)
+                    else:
+                        print(f"Restoring State : {ramp_state}", flush=True)
+                        self.generator_ramp_state = ramp_state
+                    ramp_state_entry_time = state.get("StateEntryTime", 0)
+                    if ramp_state_entry_time < 0.0:
+                        print(f"Invalid State Entry Time detected : {ramp_state_entry_time}", flush=True)
+                    else:
+                        print(f"Restoring State Entry Time : {ramp_state_entry_time}", flush=True)
+                        self.generator_state_entry_time = ramp_state_entry_time
+        else:
+            print("No state_dump.json file detected", flush=True)
 
 
 if __name__ == "__main__":
