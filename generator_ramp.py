@@ -221,7 +221,15 @@ class GeneratorRampController:
         }
 
     def update_ac_input_current(self):
-        self.ac_input_current = round(self.get_dbus_value("ac_input1_I"), 1)
+        val = self.get_dbus_value("ac_input1_I")
+        if val is not None:
+            self.inverter_connected = True
+            self.ac_input_current = round(val, 1)
+        else:
+            self.inverter_connected = False
+            print("Did not receive data from inverter", flush=True)
+            self.ac_input_current = None
+            self.clear_dbus_item("ac_input1_I")
 
     def update_logged_vars(self):
         for k, v in self.dbus_items_spec.items():
