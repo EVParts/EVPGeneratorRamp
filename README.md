@@ -3,7 +3,7 @@ A victron Ekrano package for controlling the 15Kva aquafuel generator.
 
 ## Overview
 
-The package installs a service which runs the python script generator_control.py on the target victron device (Only tested against Ekrano)
+The package installs a service which runs the python script generator_ramp.py on the target victron device (Only tested against Ekrano)
 
 The service will monitor the input buttons on the front of the generator and control the state of the generator by activating relays via a DTWonder 8-relay module.
 

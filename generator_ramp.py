@@ -361,7 +361,7 @@ if __name__ == "__main__":
         with open(join(dirname(__file__), "version")) as f_version:
             version = f_version.readline()
         print("\n\n****************************************\n")
-        print(f"Running generator_control.py \t{version}", flush=True)
+        print(f"Running generator_ramp.py \t{version}", flush=True)
         print("\n****************************************\n\n")
         print("Waiting 5s for system to startup", flush=True)
         sleep(5)
