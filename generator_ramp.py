@@ -75,7 +75,7 @@ class GeneratorRampController:
         self.generator_state_entry_time = time()
         self.generator_stall_counter = 0
         self.ac_input_curr_limit_target = 0
-        self.relay_states = {}
+        self.relay_states = {0 : None}
 
         self._last_log = {}
         self.duplicate_log_counter = {}
@@ -109,9 +109,10 @@ class GeneratorRampController:
 
         self.check_and_create_connections()
 
+
     @property
     def generator_state_time(self):
-        return self.tick_time - self.generator_state_entry_time
+        return round(self.tick_time - self.generator_state_entry_time, 1)
 
     @property
     def Fault_Detected(self):
@@ -352,7 +353,7 @@ class GeneratorRampController:
             self.tick_time = time()
             self.check_and_create_connections()
 
-            if (self.Inverter_Switch_Mode == INV_SWITCH_ON) or (self.Inverter_Switch_Mode == INV_SWITCH_CHARGE_ONLY):
+            if (self.inverter_switch_mode == INV_SWITCH_ON) or (self.inverter_switch_mode == INV_SWITCH_CHARGE_ONLY):
                 self.update_ac_input_current_limit()
             self.update_relay_states()
             self.update_ac_input_current()
@@ -424,7 +425,7 @@ class GeneratorRampController:
             f"AC In Curr {self.ac_input_current}A",
             f"AC In Curr Lim {self.ac_input_current_limit}A",
             f"Target {self.ac_input_curr_limit_target}A",
-            f"Gen Ramp {time() - self.generator_state_entry_time}s",
+            f"Gen Ramp {self.generator_state_time}s",
             f"Inv Del {self.inverter_delay}s",
             f"Fault {self.Fault_Detected}",
             f"Stall Count {self.generator_stall_counter}",
