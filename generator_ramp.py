@@ -221,7 +221,7 @@ class GeneratorRampController:
         }
 
     def update_ac_input_current(self):
-        self.ac_input_current = self.get_dbus_value("ac_input1_I")
+        self.ac_input_current = round(self.get_dbus_value("ac_input1_I"), 1)
 
     def update_logged_vars(self):
         for k, v in self.dbus_items_spec.items():
@@ -298,7 +298,7 @@ class GeneratorRampController:
                 self.generator_ramp_state = STATE_INV_ON
                 self.generator_stall_counter += 1
 
-            self.ac_input_curr_limit_target = self.ramp_calc(self.generator_state_time, GENSET_WARMUP_TIME,
+            self.ac_input_curr_limit_target = self.ramp_calc(self.generator_state_time, GENSET_STANDBY_RAMP_TIME,
                                                              GENSET_WARMUP_CURRENT_LIMIT, GENSET_STANDBY_CURRENT_LIMIT)
 
         elif self.generator_ramp_state == STATE_PRIME_RAMP:
@@ -312,7 +312,7 @@ class GeneratorRampController:
                 self.generator_ramp_state = STATE_INV_ON
                 self.generator_stall_counter += 1
 
-            self.ac_input_curr_limit_target = self.ramp_calc(self.generator_state_time, GENSET_WARMUP_TIME,
+            self.ac_input_curr_limit_target = self.ramp_calc(self.generator_state_time, GENSET_PRIME_RAMP_TIME,
                                                              GENSET_STANDBY_CURRENT_LIMIT, GENSET_PRIME_CURRENT_LIMIT)
 
         elif self.generator_ramp_state == STATE_STEADYSTATE:
@@ -340,7 +340,7 @@ class GeneratorRampController:
         frac = curr_time / duration
         frac = min(1.0, frac)
         frac = max(0.0, frac)
-        return start_val + ((stop_val - start_val) * frac)
+        return round(start_val + ((stop_val - start_val) * frac), 1)
 
     def run(self):
         self.check_stored_state()
