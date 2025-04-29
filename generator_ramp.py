@@ -74,7 +74,7 @@ class GeneratorRampController:
         self.tick_time = time()
         self.generator_state_entry_time = time()
         self.generator_stall_counter = 0
-        self.ac_input_curr_limit_target = 0
+        self.ac_input_curr_limit_target = GENSET_INITIAL_LIMIT
         self.relay_states = {0 : None}
 
         self._last_log = {}
@@ -266,7 +266,7 @@ class GeneratorRampController:
                 self.generator_ramp_state = STATE_INV_OFF
             elif self.generator_start_requested == False:
                 self.generator_ramp_state = STATE_INV_ON
-            elif self.generator_state_entry_time > GENSET_INITIAL_RAMP_TIME:
+            elif self.generator_state_time > GENSET_INITIAL_RAMP_TIME:
                 self.generator_ramp_state = STATE_WARMUP
             elif self.ac_input_current == 0.0:
                 self.generator_ramp_state = STATE_INV_ON
@@ -280,7 +280,7 @@ class GeneratorRampController:
                 self.generator_ramp_state = STATE_INV_OFF
             elif self.generator_start_requested == False:
                 self.generator_ramp_state = STATE_INV_ON
-            elif self.generator_state_entry_time > GENSET_WARMUP_TIME:
+            elif self.generator_state_time > GENSET_WARMUP_TIME:
                 self.generator_ramp_state = STATE_STANDBY_RAMP
             elif self.ac_input_current == 0.0:
                 self.generator_ramp_state = STATE_INV_ON
@@ -293,7 +293,7 @@ class GeneratorRampController:
                 self.generator_ramp_state = STATE_INV_OFF
             elif self.generator_start_requested == False:
                 self.generator_ramp_state = STATE_INV_ON
-            elif self.generator_state_entry_time > GENSET_STANDBY_RAMP_TIME:
+            elif self.generator_state_time > GENSET_STANDBY_RAMP_TIME:
                 self.generator_ramp_state = STATE_PRIME_RAMP
             elif self.ac_input_current == 0.0:
                 self.generator_ramp_state = STATE_INV_ON
@@ -307,7 +307,7 @@ class GeneratorRampController:
                 self.generator_ramp_state = STATE_INV_OFF
             elif self.generator_start_requested == False:
                 self.generator_ramp_state = STATE_INV_ON
-            elif self.generator_state_entry_time > GENSET_PRIME_RAMP_TIME:
+            elif self.generator_state_time > GENSET_PRIME_RAMP_TIME:
                 self.generator_ramp_state = STATE_STEADYSTATE
             elif self.ac_input_current == 0.0:
                 self.generator_ramp_state = STATE_INV_ON
@@ -353,6 +353,7 @@ class GeneratorRampController:
             self.tick_time = time()
             self.check_and_create_connections()
 
+            self.update_battery_limits()
             if (self.inverter_switch_mode == INV_SWITCH_ON) or (self.inverter_switch_mode == INV_SWITCH_CHARGE_ONLY):
                 self.update_ac_input_current_limit()
             self.update_relay_states()
