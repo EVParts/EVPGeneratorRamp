@@ -461,6 +461,7 @@ class GeneratorRampController:
         print(state)
         with open("state_dump.json", 'w') as f:
             json.dump(state, f)
+
     def check_stored_state(self):
         print("Checking stored state")
         if exists("state_dump.json"):

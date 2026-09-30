@@ -1,0 +1,15 @@
+--- PageSettings.qml.orig
++++ PageSettings.qml
+@@ -180,6 +180,12 @@
+ 		MbSubMenu {
+ 			description: "Debug"
+ 			subpage: Component { PageDebug {} }
+ 			showAccessLevel: User.AccessService
+ 		}
++
++		MbSubMenu {
++			description: qsTr("Generator Ramp")
++			subpage: Component { PageGeneratorRamp {} }
++		}
+ 	}
+ }
