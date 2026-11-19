@@ -28,7 +28,7 @@ EXCEPTION_THRESHOLD = 10
 
 # TODO Update the ramp function to look for the AC input 1 voltage to stabilise before beginning the timer.
 # Parameters for generator ramp function
-GENSET_INITIAL_RAMP_TIME = 0
+GENSET_INITIAL_RAMP_TIME = 30
 GENSET_INITIAL_LIMIT = 14.5 # Quattro can not have limit set less than 14.5, after fw update
 GENSET_WARMUP_TIME = 60
 GENSET_WARMUP_CURRENT_LIMIT = 14.5 # Quattro can not have limit set less than 14.5, after fw update
@@ -264,9 +264,11 @@ class GeneratorRampController:
             elif self.generator_start_requested == False:
                 self.generator_ramp_state = STATE_INV_ON
             elif self.ac_input_current > GENSET_INITIAL_LIMIT / 2.0:
-                self.generator_ramp_state = STATE_INITIAL_RAMP
+                # self.generator_ramp_state = STATE_INITIAL_RAMP
+                self.generator_ramp_state = STATE_WARMUP
 
-            self.ac_input_curr_limit_target = GENSET_INITIAL_LIMIT
+            # self.ac_input_curr_limit_target = GENSET_INITIAL_LIMIT
+            self.ac_input_curr_limit_target = GENSET_WARMUP_CURRENT_LIMIT
 
         elif self.generator_ramp_state == STATE_INITIAL_RAMP:
             if self.inverter_connected == False:
