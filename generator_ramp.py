@@ -21,19 +21,19 @@ INV_SWITCH_INVERT_ONLY = 2
 INV_SWITCH_CHARGE_ONLY = 1
 
 
-TIMESTEP = 0.25
+TIMESTEP = 1
 
 EXCEPTION_THRESHOLD = 10
 
 
 # TODO Update the ramp function to look for the AC input 1 voltage to stabilise before beginning the timer.
 # Parameters for generator ramp function
-GENSET_INITIAL_LIMIT = 3
-GENSET_INITIAL_RAMP_TIME = 30
+GENSET_INITIAL_RAMP_TIME = 0
+GENSET_INITIAL_LIMIT = 14.5 # Quattro can not have limit set less than 14.5, after fw update
 GENSET_WARMUP_TIME = 60
-GENSET_WARMUP_CURRENT_LIMIT = 12
-GENSET_STANDBY_CURRENT_LIMIT = 30 #
+GENSET_WARMUP_CURRENT_LIMIT = 14.5 # Quattro can not have limit set less than 14.5, after fw update
 GENSET_STANDBY_RAMP_TIME = 120
+GENSET_STANDBY_CURRENT_LIMIT = 30 #
 GENSET_PRIME_CURRENT_LIMIT = 35 # This is the main current limit used to be 40A
 GENSET_PRIME_RAMP_TIME = 30*60
 
