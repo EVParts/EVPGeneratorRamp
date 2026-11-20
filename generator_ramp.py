@@ -202,7 +202,7 @@ class GeneratorRampController:
         else:
             self.inverter_connected = False
             print("Did not receive data from inverter", flush=True)
-            self.ac_input_current_limit = None
+            self.ac_input_current_limit = 0.0
             self.clear_dbus_item("ac_input_current_limit")
 
     def update_inverter_switch_mode(self):
@@ -228,7 +228,7 @@ class GeneratorRampController:
         else:
             self.inverter_connected = False
             print("Did not receive data from inverter", flush=True)
-            self.ac_input_current = None
+            self.ac_input_current = 0.0
             self.clear_dbus_item("ac_input1_I")
 
     def update_logged_vars(self):
