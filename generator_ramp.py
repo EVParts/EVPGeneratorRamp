@@ -6,8 +6,11 @@ from os.path import join, dirname, exists
 from pprint import pformat, pprint
 from time import time, sleep
 
+from generic_input import create_generic_input, update_generic_input
+
 import dbus
 from dbus.mainloop.glib import DBusGMainLoop
+
 
 # our own packages
 sys.path.insert(1, os.path.join(os.path.dirname(__file__), 'velib_python'))
