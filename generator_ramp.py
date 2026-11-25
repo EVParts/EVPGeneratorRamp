@@ -87,6 +87,32 @@ class GeneratorRampController:
             self._initial_snapshot = None
             self._current_snapshot = None
 
+        self.plugin_state = create_generic_input(
+            service_name="com.victronenergy.switch.generator_ramp",
+            index="generator_ramp_state",
+            name="Genset Ramp State",
+            value=0,
+            labels=["STATE_INV_OFF",
+                    "STATE_INV_ON",
+                    "STATE_START_REQD",
+                    "STATE_AC_STABLE",
+                    "STATE_INITIAL_RAMP",
+                    "STATE_WARMUP",
+                    "STATE_STANDBY_RAMP",
+                    "STATE_PRIME_RAMP",
+                    "STATE_STEADYSTATE",
+                    ],
+            group="Plugins"
+        )
+
+        self.ramp_state_timer = create_generic_input(
+            service_name="com.victronenergy.switch.generator_ramp",
+            index="generator_ramp_state_timer",
+            name="Genset Ramp State Timer",
+            value=0,
+            group="Plugins"
+        )
+
         self.dbus_items_spec = {
             "battery_charge_limit": {"service": "com.victronenergy.battery.socketcan_vecan0",
                                      "path": "/Info/MaxChargeCurrent"},
@@ -344,6 +370,11 @@ class GeneratorRampController:
         if new_state != incoming_state:
             self.generator_state_entry_time = time()
             self.store_state()
+
+        update_generic_input(self.plugin_state, {"Off": 1, "On": 2, "ChargeOnly": 3}.get(self.Mode, 0))
+        update_generic_input(self.ramp_state_timer, self.generator_state_time)
+
+
 
     def ramp_calc(self, curr_time, duration, start_val, stop_val):
         curr_time = max(0.0, curr_time)
