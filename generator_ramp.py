@@ -6,7 +6,7 @@ from os.path import join, dirname, exists
 from pprint import pformat, pprint
 from time import time, sleep
 
-from generic_input import create_generic_input, update_generic_input
+from plugin_dbus import create_input, update_input, create_service, start_dbus
 
 import dbus
 from dbus.mainloop.glib import DBusGMainLoop
@@ -90,8 +90,12 @@ class GeneratorRampController:
             self._initial_snapshot = None
             self._current_snapshot = None
 
-        self.plugin_state = create_generic_input(
-            service_name="com.victronenergy.switch.generator_ramp",
+        start_dbus()
+
+        self.service = create_service()
+
+        self.plugin_state = create_input(
+            service=service,
             index="generator_ramp_state",
             name="Genset Ramp State",
             value=0,
@@ -108,13 +112,15 @@ class GeneratorRampController:
             group="Plugins"
         )
 
-        self.ramp_state_timer = create_generic_input(
-            service_name="com.victronenergy.switch.generator_ramp",
+        self.ramp_state_timer =  create_input(
+            service=service,
             index="generator_ramp_state_timer",
             name="Genset Ramp State Timer",
             value=0,
             group="Plugins"
         )
+
+        self.service.register()
 
         self.dbus_items_spec = {
             "battery_charge_limit": {"service": "com.victronenergy.battery.socketcan_vecan0",
