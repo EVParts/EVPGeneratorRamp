@@ -380,8 +380,8 @@ class GeneratorRampController:
             self.generator_state_entry_time = time()
             self.store_state()
 
-        update_generic_input(self.plugin_state, self.generator_ramp_state)
-        update_generic_input(self.ramp_state_timer, self.generator_state_time)
+        update_input(self.plugin_state, self.generator_ramp_state)
+        update_input(self.ramp_state_timer, self.generator_state_time)
 
 
 
