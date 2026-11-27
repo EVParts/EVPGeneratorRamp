@@ -28,7 +28,10 @@ _VERSION_FILE = os.path.join(os.path.dirname(_PLUGIN_FILE), "version")
 with open(_VERSION_FILE, "r", encoding="utf-8") as _version_file:
     VERSION = _version_file.read().strip()
 
-PRODUCT_NAME = _PLUGIN_NAME
+PRODUCT_NAME = "EVParts {} Plugin".format(
+    _PLUGIN_NAME.replace("_", " ").title()
+)
+
 DEVICE_INSTANCE = 0
 PRODUCT_ID = 0xFFFF
 FIRMWARE_VERSION = VERSION
