@@ -95,7 +95,7 @@ class GeneratorRampController:
         self.service = create_service()
 
         self.plugin_state = create_input(
-            service=service,
+            service=self.service,
             index="generator_ramp_state",
             name="Genset Ramp State",
             value=0,
@@ -113,7 +113,7 @@ class GeneratorRampController:
         )
 
         self.ramp_state_timer =  create_input(
-            service=service,
+            service=self.service,
             index="generator_ramp_state_timer",
             name="Genset Ramp State Timer",
             value=0,
